@@ -27,8 +27,8 @@ android {
         applicationId = "com.carwifi.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -100,4 +100,7 @@ dependencies {
 
     // WorkManager：低功耗周期监测（电量阈值 + 夜间模式补发）
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // NanoHTTPD：车载 HTTP 文件共享服务器（随热点自动起停，轻量、无需 Root）
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 }

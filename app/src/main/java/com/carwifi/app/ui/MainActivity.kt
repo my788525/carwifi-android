@@ -19,6 +19,7 @@ import com.carwifi.app.core.CoreService
 import com.carwifi.app.data.AppSettings
 import com.carwifi.app.data.SettingsStore
 import com.carwifi.app.dispatch.Forwarder
+import com.carwifi.app.fileshare.FileShareManager
 import com.carwifi.app.shizuku.ShizukuStarter
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.ComponentGate
@@ -41,6 +42,8 @@ class MainActivity : ComponentActivity() {
     private var batteryExempt by mutableStateOf(false)
     private var updateStatus by mutableStateOf("")
     private var updateTarget by mutableStateOf<UpdateChecker.ReleaseInfo?>(null)
+    private var fileShareUrl by mutableStateOf("")
+    private var fileSharePath by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,11 +88,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 开关变更后同步监听组件启用状态
+        // 开关变更后同步监听组件启用状态，并通知服务重新协调文件共享起停
         val onPatch: (AppSettings.() -> AppSettings) -> Unit = { transform ->
             lifecycleScope.launch(Dispatchers.IO) {
                 settingsStore.update(transform)
                 runCatching { ComponentGate.sync(this@MainActivity, settingsStore.current()) }
+                runCatching { sendBroadcast(Intent(CoreService.ACTION_RECONCILE)) }
             }
         }
 
@@ -128,7 +132,9 @@ class MainActivity : ComponentActivity() {
                     updateStatus = updateStatus,
                     onCheckUpdate = { lifecycleScope.launch(Dispatchers.IO) { checkUpdate(showIfLatest = true) } },
                     auditLines = audit,
-                    onRefreshAudit = { audit = uiLogger.recent() }
+                    onRefreshAudit = { audit = uiLogger.recent() },
+                    fileShareUrl = fileShareUrl,
+                    fileSharePath = fileSharePath
                 )
 
                 updateTarget?.let { info ->
@@ -155,6 +161,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         audit = uiLogger.recent()
         refreshBatteryExempt()
+        fileShareUrl = FileShareManager.getAccessUrl(this)
+        fileSharePath = FileShareManager.rootDir(this).absolutePath
     }
 
     private fun currentVersion(): String =

@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.carwifi.app.data.AppSettings
 import com.carwifi.app.data.SettingsStore
+import com.carwifi.app.fileshare.FileShareManager
 import com.carwifi.app.receivers.TetherStateReceiver
 import com.carwifi.app.tethering.TetheringController
 import com.carwifi.app.ui.MainActivity
@@ -22,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -29,6 +31,7 @@ import kotlinx.coroutines.launch
  * 常驻前台服务：仅负责「充电自动开热点」与状态展示。
  * 短信 / 未接来电 / 低电量 的转发已改为事件驱动（接收器 / 监听器 / WorkManager 周期任务），
  * 不再在此轮询，大幅降低耗电。
+ * 文件共享服务器随热点生命周期在此协调启停（热点开+开关开 → 运行，否则停止）。
  * onTaskRemoved 自拉起，配合开机自启实现常驻。
  */
 class CoreService : android.app.Service() {
@@ -40,6 +43,7 @@ class CoreService : android.app.Service() {
     private lateinit var auditLogger: AuditLogger
     private lateinit var tethering: TetheringController
     private lateinit var tetherReceiver: TetherStateReceiver
+    private lateinit var reconcileReceiver: BroadcastReceiver
 
     override fun onCreate() {
         super.onCreate()
@@ -54,6 +58,12 @@ class CoreService : android.app.Service() {
         tetherReceiver = TetherStateReceiver()
         registerReceiver(tetherReceiver, IntentFilter("android.net.conn.TETHER_STATE_CHANGED"))
 
+        // 注册「设置变更协调」本地广播：来自 MainActivity 开关变更，用于即时起停文件共享
+        reconcileReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) = reconcileFileShare()
+        }
+        registerReceiver(reconcileReceiver, IntentFilter(ACTION_RECONCILE))
+
         // 开机 / 重启后若已在充电（如常驻车充），立即按设置开热点。
         // 设备已在充电时系统不会重发 ACTION_POWER_CONNECTED，故需主动检测。
         if (BatteryUtils.isCharging(applicationContext)) {
@@ -66,6 +76,8 @@ class CoreService : android.app.Service() {
                         else "已在充电：热点开启失败（Shizuku 未就绪，可在设置查看操作提示）"
                     )
                 }
+                delay(3000)
+                reconcileFileShare()
             }
         }
     }
@@ -87,6 +99,8 @@ class CoreService : android.app.Service() {
     override fun onDestroy() {
         runCatching { unregisterReceiver(tetherReceiver) }
         runCatching { tetherReceiver.dispose() }
+        runCatching { unregisterReceiver(reconcileReceiver) }
+        runCatching { FileShareManager.stop() }
         job.cancel()
         super.onDestroy()
     }
@@ -98,29 +112,46 @@ class CoreService : android.app.Service() {
     private fun onPowerConnected() {
         scope.launch {
             val s = settingsStore.settings.first()
-            if (!s.tetheringEnabled) return@launch
-            if (!HotspotPolicy.shouldControlByApp(s)) {
+            if (s.tetheringEnabled && HotspotPolicy.shouldControlByApp(s)) {
+                val ok = tethering.startHotspot()
+                auditLogger.log(
+                    if (ok) "充电：已开启热点"
+                    else "充电：热点开启失败（Shizuku 未就绪，可在设置中查看操作提示）"
+                )
+            } else if (s.tetheringEnabled) {
                 auditLogger.log("充电：本机由系统自动任务管理热点，应用跳过接管")
-                return@launch
             }
-            val ok = tethering.startHotspot()
-            auditLogger.log(
-                if (ok) "充电：已开启热点"
-                else "充电：热点开启失败（Shizuku 未就绪，可在设置中查看操作提示）"
-            )
+            // 热点实际开启需要时间，稍候再协调文件共享起停
+            delay(3000)
+            reconcileFileShare()
         }
     }
 
     private fun onPowerDisconnected() {
         scope.launch {
             val s = settingsStore.settings.first()
-            if (!s.tetheringEnabled) return@launch
-            if (!HotspotPolicy.shouldControlByApp(s)) {
-                auditLogger.log("断电：本机由系统自动任务管理热点，应用跳过接管")
-                return@launch
+            if (s.tetheringEnabled && HotspotPolicy.shouldControlByApp(s)) {
+                val ok = tethering.stopHotspot()
+                auditLogger.log(if (ok) "断电：已关闭热点" else "断电：热点关闭失败")
             }
-            val ok = tethering.stopHotspot()
-            auditLogger.log(if (ok) "断电：已关闭热点" else "断电：热点关闭失败")
+            // 断电后若热点被关闭，文件共享应随之停止
+            reconcileFileShare()
+        }
+    }
+
+    /**
+     * 依据当前热点实际状态与文件共享开关，确保 HTTP 文件服务器处于应有状态。
+     * 幂等、可反复调用；热点开+开关开 → 运行，否则停止。
+     */
+    private fun reconcileFileShare() {
+        scope.launch {
+            val s = settingsStore.settings.first()
+            val hotspotOn = tethering.isHotspotOn()
+            FileShareManager.applyFromSettings(applicationContext, s, hotspotOn)
+            auditLogger.log(
+                "文件共享协调：热点=${if (hotspotOn) "开" else "关"} 开关=${s.fileShareEnabled} " +
+                    "状态=${if (FileShareManager.isRunning()) "运行中" else "已停"}"
+            )
         }
     }
 
@@ -154,6 +185,8 @@ class CoreService : android.app.Service() {
     companion object {
         const val ACTION_POWER_CONNECTED = "com.carwifi.app.ACTION_POWER_CONNECTED"
         const val ACTION_POWER_DISCONNECTED = "com.carwifi.app.ACTION_POWER_DISCONNECTED"
+        /** 本地广播：设置变更后通知服务重新协调文件共享起停。 */
+        const val ACTION_RECONCILE = "com.carwifi.app.ACTION_RECONCILE"
         private const val NOTIF_ID = 1001
         private const val CHANNEL_ID = "carwifi_core"
 

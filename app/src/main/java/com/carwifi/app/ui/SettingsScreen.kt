@@ -54,7 +54,9 @@ fun SettingsScreen(
     updateStatus: String,
     onCheckUpdate: () -> Unit,
     auditLines: List<String>,
-    onRefreshAudit: () -> Unit
+    onRefreshAudit: () -> Unit,
+    fileShareUrl: String,
+    fileSharePath: String
 ) {
     var showHotspotGuide by remember { mutableStateOf(false) }
 
@@ -147,6 +149,70 @@ fun SettingsScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+                }
+            }
+
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("车内文件共享（HTTP）", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        SwitchRow("开热点时自动共享手机文件", settings.fileShareEnabled) {
+                            onPatch { copy(fileShareEnabled = it) }
+                        }
+                        if (settings.fileShareEnabled) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(
+                                    value = settings.fileSharePort.toString(),
+                                    onValueChange = {
+                                        it.toIntOrNull()?.let { v ->
+                                            if (v in 1024..65535) onPatch { copy(fileSharePort = v) }
+                                        }
+                                    },
+                                    label = { Text("端口(1024-65535)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = settings.fileSharePassword,
+                                    onValueChange = { onPatch { copy(fileSharePassword = it) } },
+                                    label = { Text("访问密码(可选)") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            if (fileShareUrl.isNotEmpty()) {
+                                Text(
+                                    "车机访问地址：$fileShareUrl",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    "在车机浏览器打开上述地址即可浏览 / 下载 / 上传文件。",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                Text(
+                                    "开启热点并启用本功能后，此处会显示车机可访问的地址。",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "共享文件夹：$fileSharePath",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "把要共享给车机的文件放入该文件夹即可（无需额外存储权限）。建议设置访问密码，避免同网络其他人访问。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else {
+                            Text(
+                                "开启后，连上本机热点的车机可用浏览器访问手机文件；热点关闭时自动停止，平时不占用资源。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }

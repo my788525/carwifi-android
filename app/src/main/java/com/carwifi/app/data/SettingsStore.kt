@@ -40,6 +40,12 @@ data class AppSettings(
     val batteryExemptPrompted: Boolean = false,
     /** 上次自更新检查时间戳（用于 24h 节流）。 */
     val lastUpdateCheck: Long = 0,
+    /** 开热点时自动开启 HTTP 文件共享（车机浏览器访问本机文件）。 */
+    val fileShareEnabled: Boolean = false,
+    /** 文件共享监听端口（高位端口，无需 Root）。 */
+    val fileSharePort: Int = 8080,
+    /** 文件共享访问密码（留空=不加密，仅建议车机 LAN 内使用）。 */
+    val fileSharePassword: String = "",
     val channels: List<ChannelConfig> = emptyList()
 ) {
     /** 当前缓存待补发的消息条数。 */
@@ -68,6 +74,9 @@ class SettingsStore(private val context: Context) {
             failedMessagesJson = prefs[FAILED_JSON] ?: "[]",
             batteryExemptPrompted = prefs[BATTERY_EXEMPT_PROMPTED] ?: false,
             lastUpdateCheck = prefs[LAST_UPDATE_CHECK] ?: 0,
+            fileShareEnabled = prefs[FILE_SHARE_ENABLED] ?: false,
+            fileSharePort = prefs[FILE_SHARE_PORT] ?: 8080,
+            fileSharePassword = prefs[FILE_SHARE_PASSWORD] ?: "",
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }
@@ -92,6 +101,9 @@ class SettingsStore(private val context: Context) {
             prefs[FAILED_JSON] = next.failedMessagesJson
             prefs[BATTERY_EXEMPT_PROMPTED] = next.batteryExemptPrompted
             prefs[LAST_UPDATE_CHECK] = next.lastUpdateCheck
+            prefs[FILE_SHARE_ENABLED] = next.fileShareEnabled
+            prefs[FILE_SHARE_PORT] = next.fileSharePort
+            prefs[FILE_SHARE_PASSWORD] = next.fileSharePassword
             prefs[CHANNELS_JSON] = channelsToJson(next.channels)
         }
     }
@@ -117,6 +129,9 @@ class SettingsStore(private val context: Context) {
             failedMessagesJson = prefs[FAILED_JSON] ?: "[]",
             batteryExemptPrompted = prefs[BATTERY_EXEMPT_PROMPTED] ?: false,
             lastUpdateCheck = prefs[LAST_UPDATE_CHECK] ?: 0,
+            fileShareEnabled = prefs[FILE_SHARE_ENABLED] ?: false,
+            fileSharePort = prefs[FILE_SHARE_PORT] ?: 8080,
+            fileSharePassword = prefs[FILE_SHARE_PASSWORD] ?: "",
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }.first()
@@ -138,6 +153,9 @@ class SettingsStore(private val context: Context) {
         private val FAILED_JSON = stringPreferencesKey("failed_messages_json")
         private val BATTERY_EXEMPT_PROMPTED = booleanPreferencesKey("battery_exempt_prompted")
         private val LAST_UPDATE_CHECK = longPreferencesKey("last_update_check")
+        private val FILE_SHARE_ENABLED = booleanPreferencesKey("file_share_enabled")
+        private val FILE_SHARE_PORT = intPreferencesKey("file_share_port")
+        private val FILE_SHARE_PASSWORD = stringPreferencesKey("file_share_password")
         private val CHANNELS_JSON = stringPreferencesKey("channels_json")
 
         private fun parseChannels(json: String): List<ChannelConfig> {
