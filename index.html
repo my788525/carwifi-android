@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CarWifi · 安卓车载 WiFi 与智能消息转发 App 设计规格</title>
+<style>
+  :root {
+    --bg: #f6f8fb;
+    --card: #ffffff;
+    --ink: #1f2933;
+    --muted: #66727f;
+    --line: #e3e8ef;
+    --brand: #1769ff;
+    --brand-soft: #eaf1ff;
+    --good: #1a8f5b;
+    --good-soft: #e7f6ee;
+    --warn: #b54708;
+    --warn-soft: #fff4e6;
+    --danger: #b42318;
+    --danger-soft: #fdecea;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 22px 80px; }
+  header.doc {
+    background: linear-gradient(135deg, #1769ff 0%, #0b3fb3 100%);
+    color: #fff;
+    border-radius: 18px;
+    padding: 34px 32px;
+    box-shadow: 0 12px 30px rgba(23,105,255,.25);
+  }
+  header.doc h1 { margin: 0 0 6px; font-size: 27px; letter-spacing: .5px; }
+  header.doc p.sub { margin: 0; opacity: .92; font-size: 14.5px; }
+  .pills { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill {
+    background: rgba(255,255,255,.16);
+    border: 1px solid rgba(255,255,255,.28);
+    color: #fff; padding: 5px 12px; border-radius: 999px; font-size: 12.5px;
+  }
+  .pill b { font-weight: 700; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px 26px; margin-top: 22px; box-shadow: 0 2px 8px rgba(16,24,40,.04); }
+  h2 { font-size: 19px; margin: 0 0 14px; display: flex; align-items: center; gap: 9px; }
+  h2 .num { background: var(--brand); color: #fff; width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
+  h3 { font-size: 15.5px; margin: 18px 0 8px; color: #243b53; }
+  p { margin: 8px 0; }
+  .muted { color: var(--muted); font-size: 13.5px; }
+  ul.tight { margin: 6px 0; padding-left: 20px; }
+  ul.tight li { margin: 5px 0; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 4px; }
+  .kpi { background: var(--brand-soft); border-radius: 12px; padding: 14px 12px; text-align: center; }
+  .kpi .v { font-size: 22px; font-weight: 800; color: var(--brand); }
+  .kpi .l { font-size: 12px; color: #3a5a8a; margin-top: 2px; }
+  .box { border-radius: 11px; padding: 14px 16px; margin: 14px 0; font-size: 14px; }
+  .box.good { background: var(--good-soft); border: 1px solid #b6e3cb; }
+  .box.warn { background: var(--warn-soft); border: 1px solid #f3d3a8; }
+  .box.danger { background: var(--danger-soft); border: 1px solid #f1b9b3; }
+  .box b { display: block; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 9px 11px; text-align: left; vertical-align: top; }
+  th { background: #f0f4fa; color: #243b53; font-weight: 700; }
+  td code, p code, li code { background: #eef2f7; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; color: #0b3fb3; }
+  pre { background: var(--code-bg); color: var(--code-ink); border-radius: 11px; padding: 16px 18px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; }
+  pre code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+  .tag { display: inline-block; font-size: 11.5px; padding: 2px 9px; border-radius: 6px; font-weight: 600; }
+  .tag.api { background: #fee2e2; color: #b42318; }
+  .tag.ok { background: #dcfce7; color: #1a8f5b; }
+  .tag.opt { background: #fef3c7; color: #b54708; }
+  .arch { width: 100%; height: auto; background: #fbfdff; border: 1px solid var(--line); border-radius: 12px; }
+  .flowgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 6px; }
+  .flowcard { border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; background: #fcfdff; }
+  .footnote { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .divider { height: 1px; background: var(--line); margin: 18px 0; border: 0; }
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .chip { background: #eef2f7; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <h1>CarWifi · 安卓车载 WiFi 与智能消息转发 App</h1>
+    <p class="sub">将安卓手机变为车载热点，并在充电 / 低电量 / 短信 / 未接来电等事件触发时，把关键信息自动推送到 Bark、Server 酱、企业微信等自定义渠道。</p>
+    <div class="pills">
+      <span class="pill">技术栈推荐：<b>原生 Kotlin + Jetpack</b></span>
+      <span class="pill">最低兼容：<b>Android 8.0 (API 26)</b></span>
+      <span class="pill">热点方案：<b>Shizuku / Root（红线）</b></span>
+      <span class="pill">可行性等级：<b>中高（受系统限制）</b></span>
+    </div>
+  </header>
+
+  <!-- 1. 产品定位 -->
+  <section>
+    <h2><span class="num">1</span>产品定位与核心场景</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="v">车载 WiFi</div><div class="l">把手机蜂窝网络<br/>共享给车内设备</div></div>
+      <div class="kpi"><div class="v">事件驱动</div><div class="l">充电 / 低电量<br/>短信 / 来电</div></div>
+      <div class="kpi"><div class="v">多通道</div><div class="l">Bark / Server酱<br/>企微 / 自定义</div></div>
+      <div class="kpi"><div class="v">本地优先</div><div class="l">配置存本地<br/>转发可加密</div></div>
+    </div>
+    <p><b>核心价值：</b>手机插上车充即自动开热点，让平板、行车记录仪、乘客设备联网；同时手机被「收在车里 / 没带在身上」时，重要短信和未接来电仍能通过第三方推送（Bark 等）实时到达你的主力设备（另一台手机 / 电脑），低电量也能提前报警防止「失联」。</p>
+    <h3>典型使用场景</h3>
+    <ul class="tight">
+      <li><b>自驾长途：</b>手机插点烟器车充 → 自动开热点 → 副驾平板、儿童设备联网。</li>
+      <li><b>手机放车里充电：</b>本人下车但车里留手机 → 收到验证码短信 → 自动转发到 Bark/企微 → 在主力手机上看到。</li>
+      <li><b>低电量守护：</b>电量低于 20% → 推送「手机电量 18%，请尽快充电」到所有已配置渠道。</li>
+      <li><b>未接来电不漏接：</b>搭载 NotificationListener 捕获「未接来电」系统通知 → 推送来电号码与时间。</li>
+    </ul>
+  </section>
+
+  <!-- 2. 架构 -->
+  <section>
+    <h2><span class="num">2</span>系统架构</h2>
+    <p class="muted">整体采用「常驻前台服务 + 事件接收器 + 统一消息调度器」结构。所有外部触发事件先汇聚到 <code>CoreService</code>，再分发给两个能力模块：<code>TetheringController</code>（热点）与 <code>MessageDispatcher</code>（消息转发）。</p>
+    <svg class="arch" viewBox="0 0 680 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="系统架构图">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 z" fill="#64748b"/>
+        </marker>
+      </defs>
+      <!-- triggers -->
+      <rect x="14" y="20" width="150" height="80" rx="10" fill="#eaf1ff" stroke="#1769ff"/>
+      <text x="89" y="46" text-anchor="middle" font-size="13" font-weight="700" fill="#0b3fb3">事件触发器</text>
+      <text x="89" y="66" text-anchor="middle" font-size="11" fill="#334155">充电 / 断电</text>
+      <text x="89" y="82" text-anchor="middle" font-size="11" fill="#334155">电量变化 / 短信 / 来电</text>
+
+      <rect x="14" y="130" width="150" height="80" rx="10" fill="#eaf1ff" stroke="#1769ff"/>
+      <text x="89" y="156" text-anchor="middle" font-size="13" font-weight="700" fill="#0b3fb3">CoreService</text>
+      <text x="89" y="176" text-anchor="middle" font-size="11" fill="#334155">前台常驻服务</text>
+      <text x="89" y="192" text-anchor="middle" font-size="11" fill="#334155">调度中枢 / 状态机</text>
+
+      <rect x="14" y="250" width="150" height="84" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+      <text x="89" y="276" text-anchor="middle" font-size="13" font-weight="700" fill="#243b53">本地存储</text>
+      <text x="89" y="296" text-anchor="middle" font-size="11" fill="#475569">DataStore：规则</text>
+      <text x="89" y="312" text-anchor="middle" font-size="11" fill="#475569">渠道 / 模板 / 阈值</text>
+
+      <!-- core to modules -->
+      <rect x="300" y="120" width="170" height="92" rx="10" fill="#fff7ed" stroke="#b54708"/>
+      <text x="385" y="148" text-anchor="middle" font-size="13" font-weight="700" fill="#b54708">TetheringController</text>
+      <text x="385" y="170" text-anchor="middle" font-size="11" fill="#475569">充电 → 自动开热点</text>
+      <text x="385" y="186" text-anchor="middle" font-size="11" fill="#475569">断电 → 自动关热点</text>
+      <text x="385" y="202" text-anchor="middle" font-size="10.5" fill="#b54708">⚠ 依赖 Shizuku/Root</text>
+
+      <rect x="300" y="232" width="170" height="100" rx="10" fill="#ecfdf5" stroke="#1a8f5b"/>
+      <text x="385" y="258" text-anchor="middle" font-size="13" font-weight="700" fill="#1a8f5b">MessageDispatcher</text>
+      <text x="385" y="280" text-anchor="middle" font-size="11" fill="#475569">模板渲染 + 队列</text>
+      <text x="385" y="296" text-anchor="middle" font-size="11" fill="#475569">重试 / 限流 / 离线缓存</text>
+      <text x="385" y="314" text-anchor="middle" font-size="10.5" fill="#1a8f5b">Channel 多实现</text>
+
+      <!-- channels -->
+      <rect x="520" y="232" width="148" height="100" rx="10" fill="#f8fafc" stroke="#475569"/>
+      <text x="594" y="258" text-anchor="middle" font-size="12.5" font-weight="700" fill="#243b53">推送渠道</text>
+      <text x="594" y="278" text-anchor="middle" font-size="10.5" fill="#475569">Bark</text>
+      <text x="594" y="294" text-anchor="middle" font-size="10.5" fill="#475569">Server 酱</text>
+      <text x="594" y="310" text-anchor="middle" font-size="10.5" fill="#475569">企业微信 / 自定义 Webhook</text>
+
+      <!-- arrows -->
+      <line x1="164" y1="60" x2="292" y2="150" stroke="#64748b" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="89" y1="210" x2="89" y2="248" stroke="#64748b" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="259" y1="166" x2="298" y2="166" stroke="#64748b" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="259" y1="282" x2="298" y2="282" stroke="#64748b" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="470" y1="282" x2="518" y2="282" stroke="#64748b" stroke-width="1.6" marker-end="url(#ar)"/>
+    </svg>
+    <div class="footnote">架构原则：① 所有事件先入 <code>CoreService</code> 做去重 / 节流 / 状态判定；② 热点与消息两条能力线解耦，互不影响；③ 渠道通过接口抽象，新增渠道只加一个实现类。</div>
+  </section>
+
+  <!-- 3. 功能模块 -->
+  <section>
+    <h2><span class="num">3</span>四大功能模块技术实现</h2>
+
+    <h3>① 车载 WiFi（充电自动开 / 关热点）</h3>
+    <p>监听 <code>ACTION_POWER_CONNECTED</code> / <code>ACTION_POWER_DISCONNECTED</code>，命中后调用热点控制器。</p>
+    <div class="box warn">
+      <b>🔴 红线（Android 10+ 最关键的系统限制）</b>
+      普通应用<strong>无法</strong>通过公开 API 直接开启热点。Android 8 的 <code>WifiManager.setWifiApEnabled()</code> 是隐藏 API，Android 10 起彻底移除；官方 <code>TetheringManager.startTethering()</code> 标注 <code>@SystemApi</code>，仅系统 / 设备所有者可用。因此「自动开热点」必须走以下路径之一：
+    </div>
+    <table>
+      <tr><th style="width:22%">方案</th><th>原理</th><th>用户成本</th><th>推荐度</th></tr>
+      <tr><td><b>Shizuku</b></td><td>通过 ADB 授权（无线调试 / 电脑一次授权）桥接，调用隐藏 API 开启热点，<b>无需 Root</b></td><td>首次需开「无线调试」配对一次</td><td><span class="tag ok">推荐</span></td></tr>
+      <tr><td><b>Root</b></td><td>直接以 root 身份调用隐藏 API / su 命令</td><td>需已 Root 设备</td><td><span class="tag opt">备选</span></td></tr>
+      <tr><td><b>Device Owner / MDM</b></td><td>企业部署，<code>DevicePolicyManager</code> 放行 tethering</td><td>需刷机/企业环境</td><td><span class="tag opt">特殊</span></td></tr>
+      <tr><td>跳转设置页（<code>ACTION_TETHER_SETTINGS</code>）</td><td>仅弹到热点开关页，<b>仍需用户手动点</b></td><td>无法真正自动</td><td><span class="tag api">不自动</span></td></tr>
+    </table>
+    <p class="muted">结论：MVP 以 <b>Shizuku 为默认路径</b>，App 内引导用户完成一次无线调试配对；检测到 Shizuku 不可用时降级为「弹通知提醒手动开热点」。</p>
+
+    <h3>② 短信转发</h3>
+    <ul class="tight">
+      <li>注册 <code>RECEIVE_SMS</code> 广播接收器，在 <code>onReceive</code> 中取出发件人、正文、时间。</li>
+      <li>Android 12+ 下 <code>RECEIVE_SMS</code> 仍可接收新短信广播（无需设为默认短信 App）；若需读历史则必须 <code>READ_SMS</code>（受限，建议仅转发「新到短信」，避开读历史）。</li>
+      <li>触发 <code>MessageDispatcher.send(AlertMessage(type=SMS, ...))</code>。</li>
+    </ul>
+
+    <h3>③ 未接来电转发</h3>
+    <ul class="tight">
+      <li><b>方案 A（推荐）：NotificationListenerService</b> 监听系统「未接来电」通知，提取号码与时间，稳定且无需 <code>READ_CALL_LOG</code> 敏感权限。</li>
+      <li><b>方案 B：</b><code>READ_PHONE_STATE</code> 捕获 <code>CALL_STATE_RINGING → IDLE</code>，再查 <code>READ_CALL_LOG</code> 判定是否未接。权限更敏感、更易被系统回收。</li>
+    </ul>
+
+    <h3>④ 低电量提醒</h3>
+    <ul class="tight">
+      <li>前台服务内注册 <code>ACTION_BATTERY_CHANGED</code> 或用 <code>BatteryManager</code> 轮询；用户设阈值 <code>N%</code>（默认 20%）。</li>
+      <li>采用<b>边沿触发 + 去抖</b>：仅在「电量首次跌破 N%」时发一次，充电回升到 N%+ 后重置标志，避免循环刷屏。</li>
+      <li>复用 <code>MessageDispatcher</code>，与短信 / 来电走同一套渠道配置。</li>
+    </ul>
+  </section>
+
+  <!-- 4. 消息调度器 -->
+  <section>
+    <h2><span class="num">4</span>统一消息调度器（MessageDispatcher）</h2>
+    <p>这是 App 的「复用核心」。所有事件（短信 / 来电 / 低电量）都转换为统一的 <code>AlertMessage</code>，经模板渲染后由对应 <code>Channel</code> 实现发送。支持：<b>自定义渠道</b>、<b>占位符模板</b>、<b>失败重试</b>、<b>离线队列</b>。</p>
+
+    <h3>通道对接参数</h3>
+    <table>
+      <tr><th style="width:16%">渠道</th><th>请求方式</th><th>端点示例</th><th>关键字段</th></tr>
+      <tr>
+        <td><b>Bark</b></td>
+        <td>GET / POST</td>
+        <td><code>https://api.day.app/&lt;KEY&gt;/&lt;title&gt;/&lt;body&gt;</code><br/>或自建 <code>https://&lt;server&gt;/push</code></td>
+        <td><code>title</code>, <code>body</code>, <code>level</code>, <code>sound</code></td>
+      </tr>
+      <tr>
+        <td><b>Server 酱</b></td>
+        <td>GET / POST</td>
+        <td><code>https://sctapi.ftqq.com/SCT&lt;KEY&gt;.send</code></td>
+        <td><code>title</code>, <code>desp</code>（支持 Markdown）</td>
+      </tr>
+      <tr>
+        <td><b>企业微信机器人</b></td>
+        <td>POST JSON</td>
+        <td><code>https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=&lt;KEY&gt;</code></td>
+        <td><code>msgtype:text</code>, <code>content</code></td>
+      </tr>
+      <tr>
+        <td><b>自定义 Webhook</b></td>
+        <td>用户定义</td>
+        <td>任意 URL</td>
+        <td>方法 / 请求头 / Body 模板（<code>{{sender}}</code> 等占位符）</td>
+      </tr>
+    </table>
+
+    <p><b>模板占位符（所有渠道通用）：</b><code>{{event}}</code> 事件类型 · <code>{{sender}}</code> 发件人/号码 · <code>{{body}}</code> 内容 · <code>{{time}}</code> 时间 · <code>{{battery}}</code> 电量 · <code>{{device}}</code> 设备名。</p>
+
+    <h3>关键代码示例（Kotlin）</h3>
+    <pre><code>// 统一消息模型
+data class AlertMessage(
+    val type: AlertType,        // SMS / MISSED_CALL / LOW_BATTERY
+    val sender: String,
+    val body: String,
+    val battery: Int? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+// 渠道抽象：新增渠道只需实现此接口
+interface Channel {
+    val id: String
+    suspend fun send(msg: AlertMessage, template: String): Result&lt;Unit&gt;
+}
+
+class BarkChannel(private val baseUrl: String, private val key: String) : Channel {
+    override val id = "bark"
+    override suspend fun send(msg: AlertMessage, template: String): Result&lt;Unit&gt; {
+        val text = render(template, msg)
+        val url = "$baseUrl/push"
+        val json = """{"title":"${msg.type}","body":"$text","device_key":"$key"}"""
+        return runCatching { httpPost(url, json) }   // 内部含重试 + 超时
+    }
+}
+
+// 调度器：并发发往所有已启用渠道，带重试与去抖
+class MessageDispatcher(private val channels: List&lt;Channel&gt;) {
+    suspend fun dispatch(msg: AlertMessage) {
+        channels.filter { it.enabled }.forEach { ch ->
+            retry(times = 3, backoff = 2000) { ch.send(msg, ch.template) }
+        }
+    }
+}</code></pre>
+  </section>
+
+  <!-- 5. 权限矩阵 -->
+  <section>
+    <h2><span class="num">5</span>权限矩阵与后台保活</h2>
+    <table>
+      <tr><th>权限 / 能力</th><th>用途</th><th>级别</th><th>备注</th></tr>
+      <tr><td><code>RECEIVE_SMS</code></td><td>接收新短信广播</td><td>危险</td><td>Android 12+ 仍可用</td></tr>
+      <tr><td><code>READ_PHONE_STATE</code></td><td>通话状态</td><td>危险</td><td></td></tr>
+      <tr><td><code>READ_CALL_LOG</code></td><td>判定未接来电（方案 B）</td><td>危险</td><td>尽量用 NotificationListener 规避</td></tr>
+      <tr><td><code>POST_NOTIFICATIONS</code></td><td>Android 13+ 通知</td><td>常规</td><td>API 33+</td></tr>
+      <tr><td><code>FOREGROUND_SERVICE</code></td><td>常驻前台服务</td><td>常规</td><td>API 34 需指定 <code>dataSync</code> 类型</td></tr>
+      <tr><td><code>REQUEST_IGNORE_BATTERY_OPTIMIZATIONS</code></td><td>免系统杀进程</td><td>常规</td><td>引导用户加白名单</td></tr>
+      <tr><td><code>RECEIVE_BOOT_COMPLETED</code></td><td>开机自启监听</td><td>常规</td><td></td></tr>
+      <tr><td>Shizuku 授权</td><td>调用热点隐藏 API</td><td>特殊</td><td>非 Android 权限，需用户配对</td></tr>
+    </table>
+    <div class="box warn">
+      <b>⚠ OEM 后台限制（务必处理）</b>
+      小米 / 华为 / OPPO / vivo 等国产 ROM 有各自「自启动管理 / 电池优化 / 应用速冻」。仅申请权限不够，必须在 App 内引导用户到系统设置手动加白名单（可跳转对应厂商的设置 Deep Link）。否则锁屏 30 分钟后服务被回收，转发与热点全部失效。
+    </div>
+  </section>
+
+  <!-- 6. 可行性红区与合规 -->
+  <section>
+    <h2><span class="num">6</span>可行性红区、风险与合规</h2>
+    <div class="box danger">
+      <b>🚫 不可绕过的硬限制</b>
+      ① <b>非 Root / 非 Shizuku 下无法自动开热点</b>——这是设计最大前提，必须向用户明示；② Android 后台短信/通话监听在省电策略下可能被延迟，<b>实时性不保证 100%</b>；③ Google Play 对「读取短信/通话记录」类应用审核极严，<b>建议以 GitHub / 官网分发（侧载）为主，不上架 Play 或仅作为「工具类」走特殊声明</b>。
+    </div>
+    <div class="box good">
+      <b>✅ 合规与隐私建议（降低风险）</b>
+      <ul class="tight" style="margin:4px 0">
+        <li>所有渠道配置（token / key）仅存本地 <code>DataStore</code>，不回传任何服务器。</li>
+        <li>转发内容可开启「仅转发号码 / 隐藏短信正文」开关，降低隐私泄露面。</li>
+        <li>首次使用弹出明确告知：本 App 会读取短信与来电并转发到用户自配渠道。</li>
+        <li>提供「转发日志」本地审计页，用户可随时查看发了什么、发到哪。</li>
+      </ul>
+    </div>
+    <h3>主要风险与缓解</h3>
+    <table>
+      <tr><th style="width:30%">风险</th><th>缓解</th></tr>
+      <tr><td>Shizuku 断连导致热点失效</td><td>监听 Shizuku 状态，断连时通知用户重连；降级为手动提醒</td></tr>
+      <tr><td>低电量循环推送</td><td>边沿触发 + 回升重置，单次放电仅发一次</td></tr>
+      <tr><td>推送渠道 token 泄露</td><td>本地存储 + 不设云端；日志脱敏显示</td></tr>
+      <tr><td>系统回收前台服务</td><td>引导 OEM 白名单 + 开机自启 + 充电时重启监听</td></tr>
+    </table>
+  </section>
+
+  <!-- 7. 开发路线 -->
+  <section>
+    <h2><span class="num">7</span>开发路线（MVP → 完整版）</h2>
+    <div class="flowgrid">
+      <div class="flowcard">
+        <h3 style="margin-top:0">MVP（2–3 周）</h3>
+        <ul class="tight">
+          <li>设置页：阈值 N%、渠道配置</li>
+          <li>短信转发 + 低电量提醒（Bark / 自定义 Webhook）</li>
+          <li>前台服务 + 开机自启</li>
+          <li>Shizuku 热点开关（含降级提示）</li>
+        </ul>
+      </div>
+      <div class="flowcard">
+        <h3 style="margin-top:0">V1.0</h3>
+        <ul class="tight">
+          <li>NotificationListener 未接来电转发</li>
+          <li>Server 酱 / 企业微信渠道</li>
+          <li>模板占位符 + 多渠道并发</li>
+          <li>OEM 白名单引导页</li>
+        </ul>
+      </div>
+      <div class="flowcard">
+        <h3 style="margin-top:0">V1.5</h3>
+        <ul class="tight">
+          <li>离线队列 + 失败重试</li>
+          <li>转发日志审计页</li>
+          <li>Root 路径兼容</li>
+          <li>「仅转发号码」隐私模式</li>
+        </ul>
+      </div>
+      <div class="flowcard">
+        <h3 style="margin-top:0">技术栈</h3>
+        <div class="stack">
+          <span class="chip">Kotlin</span>
+          <span class="chip">Jetpack Compose</span>
+          <span class="chip">DataStore</span>
+          <span class="chip">WorkManager</span>
+          <span class="chip">Shizuku SDK</span>
+          <span class="chip">Ktor / OkHttp</span>
+          <span class="chip">NotificationListener</span>
+        </div>
+        <p class="muted" style="margin-top:8px">最低 API 26，目标 API 34+。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">8</span>工程构建与侧载部署</h2>
+    <p>本仓库即完整 Kotlin 工程（<code>carwifi-android-design/</code>），可直接用 Android Studio 打开。结构：</p>
+    <table>
+      <tr><th style="width:34%">路径</th><th>内容</th></tr>
+      <tr><td><code>app/build.gradle.kts</code></td><td>依赖：Compose / DataStore / Shizuku / 协程</td></tr>
+      <tr><td><code>app/src/main/java/com/carwifi/app/</code></td><td>core(服务) · receivers · listener · tethering · dispatch · data · ui · shizuku · util</td></tr>
+      <tr><td><code>AndroidManifest.xml</code></td><td>权限 + 四大组件声明 + Shizuku provider</td></tr>
+    </table>
+
+    <h3>前置条件</h3>
+    <ul class="tight">
+      <li>开发机：Android Studio（含 JDK 17）、compileSdk 34 对应 SDK 平台。</li>
+      <li>目标设备：Android 8.0+；要实现「自动开热点」需安装并运行 <b>Shizuku</b> App（或已 Root）。</li>
+      <li>首次构建需联网下载 Gradle 依赖（Compose BOM、Shizuku 等）。仓库未带 Gradle wrapper，可用 Android Studio 打开时自动生成，或本地执行 <code>gradle wrapper</code>。</li>
+    </ul>
+
+    <h3>Shizuku 配对（自动开热点必需）</h3>
+    <ol class="tight">
+      <li>设备：设置 → 关于手机 → 连点「版本号」开启开发者选项 → 进入「无线调试」并开启。</li>
+      <li>打开 Shizuku App → 通过「无线调试」启动 Shizuku 服务（首次需输入配对码）。</li>
+      <li>打开本 App → 设置页「Shizuku 授权」→ 点「请求授权」→ 在 Shizuku 弹窗中允许。</li>
+      <li>授权成功后状态变「已授权」，插车充即自动开热点。</li>
+    </ol>
+
+    <h3>构建 / 运行</h3>
+    <ul class="tight">
+      <li>Android Studio 打开 <code>carwifi-android-design</code> → Sync Project → Run 到已连接设备。</li>
+    </ul>
+
+    <h3>侧载分发（自用 / 给朋友）</h3>
+    <ul class="tight">
+      <li>Build → Generate Signed Bundle / APK → 自签 keystore（妥善保管）。</li>
+      <li>产出 <code>app-release.apk</code>，通过 <code>adb install</code> 或文件分享安装。</li>
+      <li>首次打开请依次完成：授予短信/电话/通知权限 → 关闭电池优化 → 开启「通知使用权」（未接来电）→ Shizuku 授权。</li>
+    </ul>
+    <div class="box warn">
+      <b>⚠ 分发须知</b>
+      因使用 <code>RECEIVE_SMS</code> / <code>READ_CALL_LOG</code> 等权限，<b>不建议上架 Google Play</b>（审核极严且易拒）。侧载模式下这些权限可直接授予，功能完整。分发给朋友时请一并说明上述授权步骤。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">9</span>结论与下一步</h2>
+    <p>该产品在<b>技术上天花板清晰、可行</b>：消息转发（短信 / 来电 / 低电量）用公开 API + 前台服务即可稳定实现；唯独「自动开热点」受 Android 10+ 系统限制，<b>必须以 Shizuku（或 Root）为前提</b>——这是设计的第一约束，已在上文用红线标出。</p>
+    <p class="muted">下一步可由你选择：① 直接产出完整 Kotlin 工程脚手架（含上述 4 模块源码）；② 先实现某一核心模块（如 MessageDispatcher + 渠道）；③ 仅保留本设计文档作为立项依据。我可继续推进。</p>
+  </section>
+
+</div>
+</body>
+</html>

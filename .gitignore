@@ -1,0 +1,26 @@
+# ---- 签名与本地环境（绝不入库）----
+*.keystore
+*.jks
+local.properties
+carwifi-release.keystore
+
+# ---- 隔离构建工具链（体积巨大，仅本机保留）----
+_build_env/
+
+# ---- 构建产物 ----
+.gradle/
+build/
+app/build/
+**/build/
+*.apk
+*.aab
+
+# ---- IDE ----
+.idea/
+*.iml
+*.iml
+.DS_Store
+captures/
+
+# ---- 系统/杂项 ----
+*.log

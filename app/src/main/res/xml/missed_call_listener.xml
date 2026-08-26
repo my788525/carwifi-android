@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<notification-listener
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:label="@string/missed_call_listener_label"
+    android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+    android:settingsActivity="com.carwifi.app/.ui.MainActivity" />

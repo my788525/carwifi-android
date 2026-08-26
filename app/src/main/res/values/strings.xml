@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CarWifi</string>
+    <string name="missed_call_listener_label">CarWifi 未接来电监听</string>
+
+    <string name="notification_channel_id">carwifi_core</string>
+    <string name="notification_channel_name">CarWifi 常驻服务</string>
+    <string name="foreground_notification_title">CarWifi 常驻中</string>
+    <string name="foreground_notification_text">常驻后台 · 充电自动开热点 · 短信/未接来电/低电量按设置转发（低功耗静默）</string>
+</resources>
