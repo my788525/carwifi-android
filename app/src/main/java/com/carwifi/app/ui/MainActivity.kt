@@ -49,7 +49,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settingsStore = SettingsStore(applicationContext)
         uiLogger = AuditLogger(filesDir)
-        runCatching { ShizukuStarter.init() }
 
         // 运行时权限（侧载场景同样需要授予）。未接来电走通知监听，无需 READ_CALL_LOG。
         val needed = mutableListOf(
@@ -175,15 +174,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestShizuku() {
-        ShizukuStarter.requestPermission(this, 1001) { granted ->
-            lifecycleScope.launch {
-                settingsStore.update { copy(shizukuReady = granted) }
+        runCatching {
+            ShizukuStarter.requestPermission(this, 1001) { granted ->
+                lifecycleScope.launch {
+                    settingsStore.update { copy(shizukuReady = granted) }
+                }
+                Toast.makeText(
+                    this,
+                    if (granted) "Shizuku 授权成功" else "Shizuku 授权被拒绝",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
-            Toast.makeText(
-                this,
-                if (granted) "Shizuku 授权成功" else "Shizuku 授权被拒绝",
-                Toast.LENGTH_SHORT
-            ).show()
+        }.onFailure {
+            Toast.makeText(this, "Shizuku 未就绪：请先安装 Shizuku App 并授权", Toast.LENGTH_LONG).show()
         }
     }
 

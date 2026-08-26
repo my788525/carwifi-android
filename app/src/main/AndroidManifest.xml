@@ -31,14 +31,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CarWifi">
 
-        <!-- Shizuku provider：用于调用热点隐藏 API -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:exported="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
-            tools:ignore="ExportedService" />
-
         <!-- 自更新 APK 安装：通过 FileProvider 暴露下载文件 -->
         <provider
             android:name="androidx.core.content.FileProvider"
