@@ -16,6 +16,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
 import com.carwifi.app.core.CoreService
+import com.carwifi.app.data.AppFeature
+import com.carwifi.app.data.AppInfo
 import com.carwifi.app.data.AppSettings
 import com.carwifi.app.data.ChannelCatalog
 import com.carwifi.app.data.SettingsStore
@@ -44,6 +46,10 @@ class MainActivity : ComponentActivity() {
     private var batteryExempt by mutableStateOf(false)
     private var updateStatus by mutableStateOf("")
     private var updateTarget by mutableStateOf<UpdateChecker.ReleaseInfo?>(null)
+    private var releaseBody by mutableStateOf("")
+    private var appFeatures by mutableStateOf<List<AppFeature>>(emptyList())
+
+    private val githubReleasesUrl = "https://github.com/my788525/carwifi-android/releases"
     private var fileShareUrl by mutableStateOf("")
     private var fileSharePath by mutableStateOf("")
 
@@ -97,6 +103,11 @@ class MainActivity : ComponentActivity() {
         // 拉取 GitHub 接口配置目录（失败则用上次缓存）
         lifecycleScope.launch(Dispatchers.IO) {
             catalog = ChannelCatalog.fetch(this@MainActivity)
+        }
+
+        // 拉取 GitHub 上的 App 特性介绍（热更新，失败用缓存）
+        lifecycleScope.launch(Dispatchers.IO) {
+            appFeatures = AppInfo.fetch(this@MainActivity)
         }
 
         // 首启即按当前设置同步监听组件（短信转发关闭则真正停止监听），无需点开开关
@@ -159,6 +170,9 @@ class MainActivity : ComponentActivity() {
                     },
                     versionName = currentVersion(),
                     updateStatus = updateStatus,
+                    releaseBody = releaseBody,
+                    appFeatures = appFeatures,
+                    githubUrl = githubReleasesUrl,
                     onCheckUpdate = { lifecycleScope.launch(Dispatchers.IO) { checkUpdate(showIfLatest = true) } },
                     auditLines = audit,
                     onRefreshAudit = { audit = uiLogger.recent() },
@@ -261,6 +275,8 @@ class MainActivity : ComponentActivity() {
             updateStatus = "检查更新失败（网络/接口异常）"
             return
         }
+        // 无论是否有新版本，都展示最新 Release 的说明正文（最近更新内容）
+        releaseBody = latest.body
         if (UpdateChecker.isNewer(cur, latest.tag)) {
             updateStatus = "发现新版本 ${latest.tag}"
             updateTarget = latest

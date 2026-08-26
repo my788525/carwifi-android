@@ -21,9 +21,9 @@ object UpdateChecker {
     private const val REPO = "my788525/carwifi-android"
     private const val API = "https://api.github.com/repos/$REPO/releases/latest"
 
-    data class ReleaseInfo(val tag: String, val apkUrl: String)
+    data class ReleaseInfo(val tag: String, val apkUrl: String, val body: String = "")
 
-    /** 拉取最新 Release 的 tag 与 APK 下载地址。 */
+    /** 拉取最新 Release 的 tag、APK 下载地址与说明正文。 */
     suspend fun fetchLatest(): ReleaseInfo? = withContext(Dispatchers.IO) {
         runCatching {
             val conn = (URL(API).openConnection() as HttpURLConnection).apply {
@@ -40,6 +40,7 @@ object UpdateChecker {
             conn.disconnect()
             val j = JSONObject(txt)
             val tag = j.optString("tag_name")
+            val body = j.optString("body")
             val assets = j.optJSONArray("assets") ?: JSONArray()
             var url = ""
             for (i in 0 until assets.length()) {
@@ -51,7 +52,7 @@ object UpdateChecker {
                     break
                 }
             }
-            if (tag.isBlank() || url.isBlank()) null else ReleaseInfo(tag, url)
+            if (tag.isBlank() || url.isBlank()) null else ReleaseInfo(tag, url, body)
         }.getOrNull()
     }
 

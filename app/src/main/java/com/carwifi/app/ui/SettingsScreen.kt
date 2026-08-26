@@ -1,5 +1,6 @@
 package com.carwifi.app.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
+import com.carwifi.app.data.AppFeature
 import com.carwifi.app.data.AppSettings
 import com.carwifi.app.model.ChannelConfig
 import com.carwifi.app.model.ChannelType
@@ -51,6 +53,9 @@ fun SettingsScreen(
     onReplayQueued: () -> Unit,
     versionName: String,
     updateStatus: String,
+    releaseBody: String,
+    appFeatures: List<AppFeature>,
+    githubUrl: String,
     onCheckUpdate: () -> Unit,
     auditLines: List<String>,
     onRefreshAudit: () -> Unit,
@@ -65,6 +70,8 @@ fun SettingsScreen(
 ) {
     var showHotspotGuide by remember { mutableStateOf(false) }
     var showAuditDialog by remember { mutableStateOf(false) }
+    var showFeaturesDialog by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("CarWifi 设置") }) }
@@ -102,14 +109,6 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall
                         )
                         Spacer(Modifier.height(10.dp))
-                        Divider()
-                        Spacer(Modifier.height(8.dp))
-                        Text("应用更新（当前 v$versionName）", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedButton(onClick = onCheckUpdate, modifier = Modifier.fillMaxWidth()) {
-                            Text("检查更新")
-                        }
-                        Text(updateStatus, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -390,6 +389,45 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("应用更新（当前 v$versionName）", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = onCheckUpdate, modifier = Modifier.fillMaxWidth()) {
+                            Text("检查更新")
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(updateStatus, style = MaterialTheme.typography.bodySmall)
+                        if (releaseBody.isNotBlank()) {
+                            Spacer(Modifier.height(10.dp))
+                            Divider()
+                            Spacer(Modifier.height(8.dp))
+                            Text("最近更新内容", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                releaseBody,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .heightIn(max = 220.dp)
+                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Divider()
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(githubUrl))) } },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("在 GitHub 查看 / 手动下载") }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = { showFeaturesDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("App 特性")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -416,6 +454,44 @@ fun SettingsScreen(
                         auditLines.reversed().forEach {
                             Text(it, style = MaterialTheme.typography.bodySmall)
                             Spacer(Modifier.height(2.dp))
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showFeaturesDialog) {
+        AlertDialog(
+            onDismissRequest = { showFeaturesDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showFeaturesDialog = false }) { Text("关闭") }
+            },
+            title = { Text("App 特性") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (appFeatures.isEmpty()) {
+                        Text(
+                            "功能介绍加载中或暂不可用，请稍后重试（需联网拉取 GitHub 上的 app-features.json）。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        appFeatures.forEach { f ->
+                            Row(
+                                modifier = Modifier.padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Text(f.icon, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 10.dp))
+                                Column {
+                                    Text(f.title, style = MaterialTheme.typography.bodyMedium)
+                                    Text(f.desc, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
                         }
                     }
                 }
