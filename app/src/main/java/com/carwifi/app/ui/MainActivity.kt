@@ -39,7 +39,22 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ -> /* 权限结果不阻塞，缺失时功能降级 */ }
+    ) { result ->
+        // 权限结果不允许静默失败：缺失关键权限时显式提示，避免「测试走网络成功但不转发」的误导。
+        val smsGranted = result[Manifest.permission.RECEIVE_SMS] == true
+        if (!smsGranted) {
+            runOnUiThread {
+                Toast.makeText(
+                    this@MainActivity,
+                    "未授予「接收短信」权限：短信转发将不可用。请在系统设置→应用→权限中允许 RECEIVE_SMS。",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            runCatching {
+                AuditLogger(filesDir).log("⚠️ 未授予 RECEIVE_SMS 权限，短信转发不可用（测试走网络故不受影响）")
+            }
+        }
+    }
 
     private var settings by mutableStateOf(AppSettings())
     private var audit by mutableStateOf<List<String>>(emptyList())

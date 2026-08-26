@@ -83,6 +83,14 @@ object Forwarder {
      */
     suspend fun testChannel(context: Context, channel: ChannelConfig): Boolean {
         val logger = AuditLogger(context.filesDir)
+        // 提示前置条件：测试只验证单通道发送能力，但真实短信还要求总开关开启 + RECEIVE_SMS 权限。
+        val pre = SettingsStore(context).settings.first()
+        if (!pre.smsForwardEnabled) {
+            logger.log("⚠️ 测试渠道[${channel.name}]：但「短信转发」总开关已关闭，真实短信不会转发（仅本次测试能发）")
+        }
+        if (pre.channels.isEmpty()) {
+            logger.log("⚠️ 当前无已保存渠道配置，测试所用配置可能未持久化")
+        }
         val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
             .format(java.util.Date())
         val msg = AlertMessage(
