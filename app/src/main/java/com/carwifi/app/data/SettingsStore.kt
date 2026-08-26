@@ -46,6 +46,8 @@ data class AppSettings(
     val fileSharePort: Int = 8080,
     /** 文件共享访问密码（留空=不加密，仅建议车机 LAN 内使用）。 */
     val fileSharePassword: String = "",
+    /** 是否在文件共享之上额外启用 DLNA/UPnP 媒体服务器（车机原生媒体 App 自动发现）。 */
+    val dlnaEnabled: Boolean = true,
     val channels: List<ChannelConfig> = emptyList()
 ) {
     /** 当前缓存待补发的消息条数。 */
@@ -77,6 +79,7 @@ class SettingsStore(private val context: Context) {
             fileShareEnabled = prefs[FILE_SHARE_ENABLED] ?: false,
             fileSharePort = prefs[FILE_SHARE_PORT] ?: 8080,
             fileSharePassword = prefs[FILE_SHARE_PASSWORD] ?: "",
+            dlnaEnabled = prefs[DLNA_ENABLED] ?: true,
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }
@@ -104,6 +107,7 @@ class SettingsStore(private val context: Context) {
             prefs[FILE_SHARE_ENABLED] = next.fileShareEnabled
             prefs[FILE_SHARE_PORT] = next.fileSharePort
             prefs[FILE_SHARE_PASSWORD] = next.fileSharePassword
+            prefs[DLNA_ENABLED] = next.dlnaEnabled
             prefs[CHANNELS_JSON] = channelsToJson(next.channels)
         }
     }
@@ -132,6 +136,7 @@ class SettingsStore(private val context: Context) {
             fileShareEnabled = prefs[FILE_SHARE_ENABLED] ?: false,
             fileSharePort = prefs[FILE_SHARE_PORT] ?: 8080,
             fileSharePassword = prefs[FILE_SHARE_PASSWORD] ?: "",
+            dlnaEnabled = prefs[DLNA_ENABLED] ?: true,
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }.first()
@@ -156,6 +161,7 @@ class SettingsStore(private val context: Context) {
         private val FILE_SHARE_ENABLED = booleanPreferencesKey("file_share_enabled")
         private val FILE_SHARE_PORT = intPreferencesKey("file_share_port")
         private val FILE_SHARE_PASSWORD = stringPreferencesKey("file_share_password")
+        private val DLNA_ENABLED = booleanPreferencesKey("dlna_enabled")
         private val CHANNELS_JSON = stringPreferencesKey("channels_json")
 
         private fun parseChannels(json: String): List<ChannelConfig> {

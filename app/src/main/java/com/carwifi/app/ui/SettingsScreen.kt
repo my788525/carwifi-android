@@ -192,6 +192,12 @@ fun SettingsScreen(
                                     "在车机浏览器打开上述地址即可浏览 / 下载 / 上传文件。",
                                     style = MaterialTheme.typography.bodySmall
                                 )
+                                if (settings.dlnaEnabled) {
+                                    Text(
+                                        "车机原生媒体 App（如系统「媒体」、VLC、Kodi）会自动发现「CarWifi Media」，可直接播放共享的 MP3 / 视频。",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                             } else {
                                 Text(
                                     "开启热点并启用本功能后，此处会显示车机可访问的地址。",
@@ -207,6 +213,21 @@ fun SettingsScreen(
                                 "把要共享给车机的文件放入该文件夹即可（无需额外存储权限）。建议设置访问密码，避免同网络其他人访问。",
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Spacer(Modifier.height(8.dp))
+                            SwitchRow("DLNA 媒体服务器（车机原生媒体 App 自动发现）", settings.dlnaEnabled) {
+                                onPatch { copy(dlnaEnabled = it) }
+                            }
+                            if (settings.dlnaEnabled) {
+                                Text(
+                                    "开启后，车机上的原生「媒体 / 网络」入口会直接发现名为「CarWifi Media」的媒体库，可流式播放 MP3 / 视频并拖动进度；同时保留浏览器访问。",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                Text(
+                                    "关闭 DLNA 后仅保留 HTTP 文件共享（车机需用浏览器或 VLC/MX Player 输入地址访问）。",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         } else {
                             Text(
                                 "开启后，连上本机热点的车机可用浏览器访问手机文件；热点关闭时自动停止，平时不占用资源。",
