@@ -47,8 +47,12 @@ fun SettingsScreen(
     onRequestShizuku: () -> Unit,
     onOpenNotifListener: () -> Unit,
     onOpenBatteryOpt: () -> Unit,
+    batteryExempt: Boolean,
     onStartService: () -> Unit,
     onReplayQueued: () -> Unit,
+    versionName: String,
+    updateStatus: String,
+    onCheckUpdate: () -> Unit,
     auditLines: List<String>,
     onRefreshAudit: () -> Unit
 ) {
@@ -76,6 +80,11 @@ fun SettingsScreen(
                         OutlinedButton(onClick = onOpenBatteryOpt, modifier = Modifier.fillMaxWidth()) {
                             Text("关闭电池优化（保活必需）")
                         }
+                        Text(
+                            if (batteryExempt) "✅ 电池优化已豁免（后台保活最佳）"
+                            else "⚠ 电池优化未豁免：部分厂商会杀后台，建议点上方按钮关闭",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         OutlinedButton(onClick = onOpenNotifListener, modifier = Modifier.fillMaxWidth()) {
                             Text("开启「未接来电」通知监听权限")
                         }
@@ -84,6 +93,15 @@ fun SettingsScreen(
                             "开机 / 重启后本应用会自动按以上设置运行（自动开热点、监听转发、周期监测），无需再次点开。",
                             style = MaterialTheme.typography.bodySmall
                         )
+                        Spacer(Modifier.height(10.dp))
+                        Divider()
+                        Spacer(Modifier.height(8.dp))
+                        Text("应用更新（当前 v$versionName）", style = MaterialTheme.typography.titleSmall)
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(onClick = onCheckUpdate, modifier = Modifier.fillMaxWidth()) {
+                            Text("检查更新")
+                        }
+                        Text(updateStatus, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

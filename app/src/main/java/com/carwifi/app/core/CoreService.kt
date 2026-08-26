@@ -12,11 +12,12 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.carwifi.app.data.AppSettings
 import com.carwifi.app.data.SettingsStore
+import com.carwifi.app.receivers.TetherStateReceiver
 import com.carwifi.app.tethering.TetheringController
 import com.carwifi.app.ui.MainActivity
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.BatteryUtils
-import com.carwifi.app.util.DeviceUtils
+import com.carwifi.app.util.HotspotPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,6 +39,7 @@ class CoreService : android.app.Service() {
     private lateinit var settingsStore: SettingsStore
     private lateinit var auditLogger: AuditLogger
     private lateinit var tethering: TetheringController
+    private lateinit var tetherReceiver: TetherStateReceiver
 
     override fun onCreate() {
         super.onCreate()
@@ -48,12 +50,16 @@ class CoreService : android.app.Service() {
         startForeground(NOTIF_ID, buildNotification())
         auditLogger.log("核心服务已启动（常驻，仅负责热点与状态）")
 
+        // 动态注册热点状态变更监听：掉线即恢复，比 15 分钟轮询更及时、更省电
+        tetherReceiver = TetherStateReceiver()
+        registerReceiver(tetherReceiver, IntentFilter("android.net.conn.TETHER_STATE_CHANGED"))
+
         // 开机 / 重启后若已在充电（如常驻车充），立即按设置开热点。
         // 设备已在充电时系统不会重发 ACTION_POWER_CONNECTED，故需主动检测。
         if (BatteryUtils.isCharging(applicationContext)) {
             scope.launch {
                 val s = settingsStore.settings.first()
-                if (s.tetheringEnabled && useShizukuForHotspot(s)) {
+                if (s.tetheringEnabled && HotspotPolicy.shouldControlByApp(s)) {
                     val ok = tethering.startHotspot()
                     auditLogger.log(
                         if (ok) "已在充电：开机自动开启热点"
@@ -79,6 +85,8 @@ class CoreService : android.app.Service() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(tetherReceiver) }
+        runCatching { tetherReceiver.dispose() }
         job.cancel()
         super.onDestroy()
     }
@@ -91,7 +99,7 @@ class CoreService : android.app.Service() {
         scope.launch {
             val s = settingsStore.settings.first()
             if (!s.tetheringEnabled) return@launch
-            if (!useShizukuForHotspot(s)) {
+            if (!HotspotPolicy.shouldControlByApp(s)) {
                 auditLogger.log("充电：本机由系统自动任务管理热点，应用跳过接管")
                 return@launch
             }
@@ -107,22 +115,13 @@ class CoreService : android.app.Service() {
         scope.launch {
             val s = settingsStore.settings.first()
             if (!s.tetheringEnabled) return@launch
-            if (!useShizukuForHotspot(s)) {
+            if (!HotspotPolicy.shouldControlByApp(s)) {
                 auditLogger.log("断电：本机由系统自动任务管理热点，应用跳过接管")
                 return@launch
             }
             val ok = tethering.stopHotspot()
             auditLogger.log(if (ok) "断电：已关闭热点" else "断电：热点关闭失败")
         }
-    }
-
-    /**
-     * 是否由本应用经 Shizuku 控制热点。
-     * 小米/Redmi/POCO 由系统「自动任务」接管热点，无需应用操作；未授权 Shizuku 时跳过，
-     * 避免无效尝试与日志噪音。
-     */
-    private fun useShizukuForHotspot(s: AppSettings): Boolean {
-        return !DeviceUtils.isXiaomi() || s.shizukuReady
     }
 
     // ---- 通知 ----

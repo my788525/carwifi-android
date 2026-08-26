@@ -66,6 +66,9 @@ class MonitorWorker(ctx: android.content.Context, params: WorkerParameters) :
             store.update { copy(nightModePrevActive = active) }
         }
 
+        // 失败队列重试（非夜间时段才发送，夜间继续缓存）
+        if (!active) Forwarder.retryFailed(applicationContext)
+
         logger.log("周期监测：电量=$battery% 夜间模式=${if (active) "激活" else "未激活"}")
         return androidx.work.ListenableWorker.Result.success()
     }

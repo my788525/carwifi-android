@@ -4,11 +4,15 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
 import com.carwifi.app.core.CoreService
@@ -18,7 +22,7 @@ import com.carwifi.app.dispatch.Forwarder
 import com.carwifi.app.shizuku.ShizukuStarter
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.ComponentGate
-import com.carwifi.app.util.DeviceUtils
+import com.carwifi.app.util.UpdateChecker
 import com.carwifi.app.workers.MonitorScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,6 +38,9 @@ class MainActivity : ComponentActivity() {
 
     private var settings by mutableStateOf(AppSettings())
     private var audit by mutableStateOf<List<String>>(emptyList())
+    private var batteryExempt by mutableStateOf(false)
+    private var updateStatus by mutableStateOf("")
+    private var updateTarget by mutableStateOf<UpdateChecker.ReleaseInfo?>(null)
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,10 +63,26 @@ class MainActivity : ComponentActivity() {
         // 启动低功耗周期监测（电量阈值 + 夜间补发 + 热点保活）
         MonitorScheduler.schedule(this)
         audit = uiLogger.recent()
+        refreshBatteryExempt()
 
         // 首启即按当前设置同步监听组件（短信转发关闭则真正停止监听），无需点开开关
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { ComponentGate.sync(this@MainActivity, settingsStore.current()) }
+        }
+
+        // 电池优化豁免：仅首次自动申请一次（常驻保活关键）。小米等厂商仍建议手动在系统设置放行。
+        lifecycleScope.launch(Dispatchers.IO) {
+            val pm = getSystemService(PowerManager::class.java)
+            val exempt = runCatching { pm.isIgnoringBatteryOptimizations(packageName) }.getOrDefault(false)
+            if (!exempt && !settingsStore.current().batteryExemptPrompted) {
+                settingsStore.update { copy(batteryExemptPrompted = true) }
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            .setData(Uri.parse("package:$packageName"))
+                    )
+                }
+            }
         }
 
         // 开关变更后同步监听组件启用状态
@@ -75,28 +98,55 @@ class MainActivity : ComponentActivity() {
             settingsStore.settings.collect { settings = it }
         }
 
+        // 首启自动检查更新（24h 节流），仅静默检查不弹窗
+        lifecycleScope.launch(Dispatchers.IO) {
+            val last = settingsStore.current().lastUpdateCheck
+            if (System.currentTimeMillis() - last > 24 * 3600 * 1000L) checkUpdate()
+        }
+
         setContent {
             CarWifiTheme {
                 SettingsScreen(
                     settings = settings,
-                    isXiaomi = DeviceUtils.isXiaomi(),
+                    isXiaomi = com.carwifi.app.util.DeviceUtils.isXiaomi(),
                     onPatch = onPatch,
                     shizukuReady = settings.shizukuReady,
                     onRequestShizuku = { requestShizuku() },
                     onOpenNotifListener = { openNotifListener() },
                     onOpenBatteryOpt = { openBatteryOptimization() },
+                    batteryExempt = batteryExempt,
                     onStartService = {
                         CoreService.start(this@MainActivity)
                         audit = uiLogger.recent()
                     },
                     onReplayQueued = {
                         lifecycleScope.launch(Dispatchers.IO) {
-                            com.carwifi.app.dispatch.Forwarder.replayQueued(this@MainActivity)
+                            Forwarder.replayQueued(this@MainActivity)
                         }
                     },
+                    versionName = currentVersion(),
+                    updateStatus = updateStatus,
+                    onCheckUpdate = { lifecycleScope.launch(Dispatchers.IO) { checkUpdate(showIfLatest = true) } },
                     auditLines = audit,
                     onRefreshAudit = { audit = uiLogger.recent() }
                 )
+
+                updateTarget?.let { info ->
+                    AlertDialog(
+                        onDismissRequest = { updateTarget = null },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                updateTarget = null
+                                downloadAndInstall(info.apkUrl)
+                            }) { Text("下载并安装") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { updateTarget = null }) { Text("暂不") }
+                        },
+                        title = { Text("发现新版本 ${info.tag}") },
+                        text = { Text("当前版本 ${currentVersion()}。下载后将跳转系统安装器完成更新（同签名可覆盖安装）。") }
+                    )
+                }
             }
         }
     }
@@ -104,6 +154,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         audit = uiLogger.recent()
+        refreshBatteryExempt()
+    }
+
+    private fun currentVersion(): String =
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrDefault("1.0.0")
+
+    private fun refreshBatteryExempt() {
+        batteryExempt = runCatching {
+            (getSystemService(PowerManager::class.java)).isIgnoringBatteryOptimizations(packageName)
+        }.getOrDefault(false)
     }
 
     private fun requestShizuku() {
@@ -133,6 +193,38 @@ class MainActivity : ComponentActivity() {
             )
         }.onFailure {
             runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+        }
+    }
+
+    /** 检查 GitHub Release 最新版本；发现新版本弹窗，否则更新状态文案。 */
+    private suspend fun checkUpdate(showIfLatest: Boolean = false) {
+        val latest = UpdateChecker.fetchLatest()
+        val cur = currentVersion()
+        settingsStore.update { copy(lastUpdateCheck = System.currentTimeMillis()) }
+        if (latest == null) {
+            updateStatus = "检查更新失败（网络/接口异常）"
+            return
+        }
+        if (UpdateChecker.isNewer(cur, latest.tag)) {
+            updateStatus = "发现新版本 ${latest.tag}"
+            updateTarget = latest
+        } else {
+            updateStatus = "已是最新（${cur}）"
+            if (showIfLatest) {
+                runOnUiThread { Toast.makeText(this, "已是最新版本 ${cur}", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
+
+    private fun downloadAndInstall(url: String) {
+        runOnUiThread { Toast.makeText(this, "正在下载更新…", Toast.LENGTH_SHORT).show() }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val file = UpdateChecker.downloadApk(this@MainActivity, url) { /* 进度可扩展 */ }
+            if (file != null) {
+                UpdateChecker.installApk(this@MainActivity, file)
+            } else {
+                runOnUiThread { Toast.makeText(this@MainActivity, "下载失败，请手动前往 Release 下载", Toast.LENGTH_LONG).show() }
+            }
         }
     }
 }

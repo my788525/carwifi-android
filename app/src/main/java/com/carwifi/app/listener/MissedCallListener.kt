@@ -29,6 +29,9 @@ class MissedCallListener : NotificationListenerService() {
 
     companion object {
         private val NUMBER_RE = Pattern.compile("(\\+?\\d[\\d\\-\\s]{6,}\\d)")
+        // 同一条未接来电通知在 30s 内重复 post/更新时去重，避免多次转发
+        private val recentKeys = mutableMapOf<String, Long>()
+        private const val DEDUPE_WINDOW_MS = 30_000L
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -46,6 +49,16 @@ class MissedCallListener : NotificationListenerService() {
 
         val isMissed = combined.contains("未接") || combined.contains("Missed")
         if (!isMissed) return
+
+        // 同通知 key 在窗口期内已处理则跳过（来电响铃→未接是同 key 的多次更新）
+        val key = sbn.key
+        val now = System.currentTimeMillis()
+        synchronized(recentKeys) {
+            recentKeys.entries.removeIf { now - it.value > DEDUPE_WINDOW_MS }
+            val prev = recentKeys[key]
+            if (prev != null && now - prev < DEDUPE_WINDOW_MS) return
+            recentKeys[key] = now
+        }
 
         val number = extractNumber(combined) ?: title.ifBlank { "未知号码" }
         val body = combined.trim()

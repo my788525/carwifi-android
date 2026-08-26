@@ -34,6 +34,12 @@ data class AppSettings(
     val nightModePrevActive: Boolean = false,
     /** 夜间模式期间缓存、待解除后补发的消息 JSON。 */
     val queuedMessagesJson: String = "[]",
+    /** 转发失败（网络抖动等）待重试的消息 JSON（复用 AlertQueue 序列化）。 */
+    val failedMessagesJson: String = "[]",
+    /** 是否已弹过电池优化豁免申请（仅首次自动申请一次）。 */
+    val batteryExemptPrompted: Boolean = false,
+    /** 上次自更新检查时间戳（用于 24h 节流）。 */
+    val lastUpdateCheck: Long = 0,
     val channels: List<ChannelConfig> = emptyList()
 ) {
     /** 当前缓存待补发的消息条数。 */
@@ -59,6 +65,9 @@ class SettingsStore(private val context: Context) {
             lowBatteryAlerted = prefs[LOW_ALERTED] ?: false,
             nightModePrevActive = prefs[NIGHT_PREV] ?: false,
             queuedMessagesJson = prefs[QUEUED_JSON] ?: "[]",
+            failedMessagesJson = prefs[FAILED_JSON] ?: "[]",
+            batteryExemptPrompted = prefs[BATTERY_EXEMPT_PROMPTED] ?: false,
+            lastUpdateCheck = prefs[LAST_UPDATE_CHECK] ?: 0,
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }
@@ -80,6 +89,9 @@ class SettingsStore(private val context: Context) {
             prefs[LOW_ALERTED] = next.lowBatteryAlerted
             prefs[NIGHT_PREV] = next.nightModePrevActive
             prefs[QUEUED_JSON] = next.queuedMessagesJson
+            prefs[FAILED_JSON] = next.failedMessagesJson
+            prefs[BATTERY_EXEMPT_PROMPTED] = next.batteryExemptPrompted
+            prefs[LAST_UPDATE_CHECK] = next.lastUpdateCheck
             prefs[CHANNELS_JSON] = channelsToJson(next.channels)
         }
     }
@@ -102,6 +114,9 @@ class SettingsStore(private val context: Context) {
             lowBatteryAlerted = prefs[LOW_ALERTED] ?: false,
             nightModePrevActive = prefs[NIGHT_PREV] ?: false,
             queuedMessagesJson = prefs[QUEUED_JSON] ?: "[]",
+            failedMessagesJson = prefs[FAILED_JSON] ?: "[]",
+            batteryExemptPrompted = prefs[BATTERY_EXEMPT_PROMPTED] ?: false,
+            lastUpdateCheck = prefs[LAST_UPDATE_CHECK] ?: 0,
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }.first()
@@ -120,6 +135,9 @@ class SettingsStore(private val context: Context) {
         private val LOW_ALERTED = booleanPreferencesKey("low_battery_alerted")
         private val NIGHT_PREV = booleanPreferencesKey("night_prev_active")
         private val QUEUED_JSON = stringPreferencesKey("queued_messages_json")
+        private val FAILED_JSON = stringPreferencesKey("failed_messages_json")
+        private val BATTERY_EXEMPT_PROMPTED = booleanPreferencesKey("battery_exempt_prompted")
+        private val LAST_UPDATE_CHECK = longPreferencesKey("last_update_check")
         private val CHANNELS_JSON = stringPreferencesKey("channels_json")
 
         private fun parseChannels(json: String): List<ChannelConfig> {

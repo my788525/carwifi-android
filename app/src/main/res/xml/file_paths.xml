@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 自更新下载的 APK 存放于应用外部 Download 目录 -->
+    <external-files-path name="updates" path="Download" />
+</paths>

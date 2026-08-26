@@ -11,22 +11,28 @@ import kotlinx.coroutines.delay
  */
 class MessageDispatcher(private val logger: AuditLogger) {
 
-    suspend fun dispatch(msg: AlertMessage, channels: List<ChannelConfig>) {
+    /** @return 至少有一个渠道发送成功返回 true；全部失败返回 false（供失败队列重试）。 */
+    suspend fun dispatch(msg: AlertMessage, channels: List<ChannelConfig>): Boolean {
         val built = channels.filter { it.enabled }.mapNotNull { ChannelFactory.build(it) }
         if (built.isEmpty()) {
             logger.log("无可用渠道，跳过 ${msg.type.label}")
-            return
+            return true
         }
+        var anySuccess = false
         built.forEach { ch ->
             var last: Result<Unit> = Result.failure(Exception("未执行"))
             repeat(RETRY_TIMES) { attempt ->
                 last = ch.send(msg)
-                if (last.isSuccess) return@forEach
+                if (last.isSuccess) {
+                    anySuccess = true
+                    return@forEach
+                }
                 delay((attempt + 1) * RETRY_BACKOFF_MS)
             }
             val status = if (last.isSuccess) "成功" else "失败(${last.exceptionOrNull()?.message})"
             logger.log("渠道[${ch.config.name}] $status · ${msg.type.label} · ${msg.sender}")
         }
+        return anySuccess
     }
 
     companion object {
