@@ -57,13 +57,13 @@ class CoreService : android.app.Service() {
 
             // 动态注册热点状态变更监听：掉线即恢复，比 15 分钟轮询更及时、更省电
             tetherReceiver = TetherStateReceiver()
-            registerReceiver(tetherReceiver, IntentFilter("android.net.conn.TETHER_STATE_CHANGED"))
+            registerReceiver(tetherReceiver, IntentFilter("android.net.conn.TETHER_STATE_CHANGED"), Context.RECEIVER_NOT_EXPORTED)
 
             // 注册「设置变更协调」本地广播：来自 MainActivity 开关变更，用于即时起停文件共享
             reconcileReceiver = object : BroadcastReceiver() {
                 override fun onReceive(ctx: Context?, intent: Intent?) = reconcileFileShare()
             }
-            registerReceiver(reconcileReceiver, IntentFilter(ACTION_RECONCILE))
+            registerReceiver(reconcileReceiver, IntentFilter(ACTION_RECONCILE), Context.RECEIVER_NOT_EXPORTED)
 
             // 开机 / 重启后若已在充电（如常驻车充），立即按设置开热点。
             // 设备已在充电时系统不会重发 ACTION_POWER_CONNECTED，故需主动检测。

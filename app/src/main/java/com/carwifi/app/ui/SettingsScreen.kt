@@ -64,6 +64,7 @@ fun SettingsScreen(
     onTestChannel: (ChannelConfig) -> Unit
 ) {
     var showHotspotGuide by remember { mutableStateOf(false) }
+    var showAuditDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("CarWifi 设置") }) }
@@ -372,23 +373,54 @@ fun SettingsScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("转发审计日志", style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.weight(1f))
-                            TextButton(onClick = onRefreshAudit) { Text("刷新") }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        if (auditLines.isEmpty()) {
-                            Text("暂无记录", style = MaterialTheme.typography.bodySmall)
-                        } else {
-                            auditLines.reversed().forEach {
-                                Text(it, style = MaterialTheme.typography.bodySmall)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("转发审计日志", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    if (auditLines.isEmpty()) "最近暂无记录"
+                                    else "最近 ${auditLines.size} 条记录",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
+                            TextButton(onClick = { showAuditDialog = true }) { Text("查看") }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showAuditDialog) {
+        AlertDialog(
+            onDismissRequest = { showAuditDialog = false },
+            confirmButton = {
+                TextButton(onClick = onRefreshAudit) { Text("刷新") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAuditDialog = false }) { Text("关闭") }
+            },
+            title = { Text("转发审计日志") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (auditLines.isEmpty()) {
+                        Text("暂无记录", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        auditLines.reversed().forEach {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(2.dp))
+                        }
+                    }
+                }
+            }
+        )
     }
 
     if (showHotspotGuide) {
