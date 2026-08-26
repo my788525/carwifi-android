@@ -2,10 +2,10 @@
   "interfaces": [
     {
       "id": "bark-home",
-      "name": "家里 Bark 服务器",
+      "name": "Bark 服务器",
       "type": "bark",
-      "server": "http://192.168.43.1:8080",
-      "token": "替换为你的Bark设备Key",
+      "server": "https://api.day.app/",
+      "token": "LxDN6MSkgzEnyMbRnNt4vm",
       "method": "POST",
       "template": "{{event}}\n来自 {{sender}}：{{body}}\n时间 {{time}}",
       "titleTemplate": "{{event}} · {{device}}"
