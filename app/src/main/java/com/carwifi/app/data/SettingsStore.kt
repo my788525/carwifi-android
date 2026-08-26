@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.carwifi.app.model.ChannelConfig
 import com.carwifi.app.model.ChannelType
+import com.carwifi.app.model.PresetInterface
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -47,10 +48,18 @@ data class AppSettings(
     val fileSharePassword: String = "",
     /** 是否在文件共享之上额外启用 DLNA/UPnP 媒体服务器（车机原生媒体 App 自动发现）。 */
     val dlnaEnabled: Boolean = true,
+    /** 额外共享的系统文件夹 URI 列表（SAF 授权，如系统 Music/Download），JSON 数组字符串。 */
+    val extraShareUrisJson: String = "[]",
     val channels: List<ChannelConfig> = emptyList()
 ) {
     /** 当前缓存待补发的消息条数。 */
     fun queuedCount(): Int = AlertQueue.parse(queuedMessagesJson).size
+
+    /** 解析额外共享文件夹 URI 列表。 */
+    fun extraShareUris(): List<String> = runCatching {
+        val arr = org.json.JSONArray(extraShareUrisJson)
+        (0 until arr.length()).map { arr.getString(it) }
+    }.getOrDefault(emptyList())
 }
 
 class SettingsStore(private val context: Context) {
@@ -78,6 +87,7 @@ class SettingsStore(private val context: Context) {
             fileSharePort = prefs[FILE_SHARE_PORT] ?: 8080,
             fileSharePassword = prefs[FILE_SHARE_PASSWORD] ?: "",
             dlnaEnabled = prefs[DLNA_ENABLED] ?: true,
+            extraShareUrisJson = prefs[EXTRA_SHARE_URIS] ?: "[]",
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }
@@ -105,6 +115,7 @@ class SettingsStore(private val context: Context) {
             prefs[FILE_SHARE_PORT] = next.fileSharePort
             prefs[FILE_SHARE_PASSWORD] = next.fileSharePassword
             prefs[DLNA_ENABLED] = next.dlnaEnabled
+            prefs[EXTRA_SHARE_URIS] = next.extraShareUrisJson
             prefs[CHANNELS_JSON] = channelsToJson(next.channels)
         }
     }
@@ -133,6 +144,7 @@ class SettingsStore(private val context: Context) {
             fileSharePort = prefs[FILE_SHARE_PORT] ?: 8080,
             fileSharePassword = prefs[FILE_SHARE_PASSWORD] ?: "",
             dlnaEnabled = prefs[DLNA_ENABLED] ?: true,
+            extraShareUrisJson = prefs[EXTRA_SHARE_URIS] ?: "[]",
             channels = parseChannels(prefs[CHANNELS_JSON] ?: "[]")
         )
     }.first()
@@ -157,6 +169,7 @@ class SettingsStore(private val context: Context) {
         private val FILE_SHARE_PORT = intPreferencesKey("file_share_port")
         private val FILE_SHARE_PASSWORD = stringPreferencesKey("file_share_password")
         private val DLNA_ENABLED = booleanPreferencesKey("dlna_enabled")
+        private val EXTRA_SHARE_URIS = stringPreferencesKey("extra_share_uris")
         private val CHANNELS_JSON = stringPreferencesKey("channels_json")
 
         private fun parseChannels(json: String): List<ChannelConfig> {
@@ -166,16 +179,46 @@ class SettingsStore(private val context: Context) {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
                     val type = ChannelType.fromKey(o.optString("type")) ?: continue
+                    val ifaces = mutableListOf<PresetInterface>()
+                    val ifArr = o.optJSONArray("interfaces")
+                    if (ifArr != null) {
+                        for (j in 0 until ifArr.length()) {
+                            val io = ifArr.getJSONObject(j)
+                            ifaces += PresetInterface(
+                                id = io.optString("id", ""),
+                                name = io.optString("name", ""),
+                                type = ChannelType.fromKey(io.optString("type")) ?: type,
+                                server = io.optString("server", ""),
+                                token = io.optString("token", ""),
+                                method = io.optString("method", "POST").uppercase(),
+                                template = io.optString("template", ChannelConfig.DEFAULT_TEMPLATE),
+                                titleTemplate = io.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE)
+                            )
+                        }
+                    }
+                    // 兼容旧版（url/token 直接挂在 channel 上）
+                    if (ifaces.isEmpty() &&
+                        (o.optString("url").isNotBlank() || o.optString("token").isNotBlank())
+                    ) {
+                        ifaces += PresetInterface(
+                            id = "legacy",
+                            name = "旧版配置",
+                            type = type,
+                            server = o.optString("url", ""),
+                            token = o.optString("token", ""),
+                            method = o.optString("method", "POST").uppercase(),
+                            template = o.optString("template", ChannelConfig.DEFAULT_TEMPLATE),
+                            titleTemplate = o.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE)
+                        )
+                    }
                     out += ChannelConfig(
                         id = o.optString("id"),
                         type = type,
                         name = o.optString("name"),
                         enabled = o.optBoolean("enabled", true),
-                        url = o.optString("url"),
-                        token = o.optString("token"),
-                        template = o.optString("template", ChannelConfig.DEFAULT_TEMPLATE),
-                        titleTemplate = o.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE),
-                        method = o.optString("method", "POST")
+                        interfaces = ifaces,
+                        defaultTemplate = o.optString("defaultTemplate", ChannelConfig.DEFAULT_TEMPLATE),
+                        defaultTitleTemplate = o.optString("defaultTitleTemplate", ChannelConfig.DEFAULT_TITLE)
                     )
                 }
             }
@@ -184,17 +227,28 @@ class SettingsStore(private val context: Context) {
 
         private fun channelsToJson(list: List<ChannelConfig>): String {
             val arr = JSONArray()
-            list.forEach {
+            list.forEach { ch ->
                 arr.put(JSONObject().apply {
-                    put("id", it.id)
-                    put("type", it.type.key)
-                    put("name", it.name)
-                    put("enabled", it.enabled)
-                    put("url", it.url)
-                    put("token", it.token)
-                    put("template", it.template)
-                    put("titleTemplate", it.titleTemplate)
-                    put("method", it.method)
+                    put("id", ch.id)
+                    put("type", ch.type.key)
+                    put("name", ch.name)
+                    put("enabled", ch.enabled)
+                    put("defaultTemplate", ch.defaultTemplate)
+                    put("defaultTitleTemplate", ch.defaultTitleTemplate)
+                    val ifArr = JSONArray()
+                    ch.interfaces.forEach { p ->
+                        ifArr.put(JSONObject().apply {
+                            put("id", p.id)
+                            put("name", p.name)
+                            put("type", p.type.key)
+                            put("server", p.server)
+                            put("token", p.token)
+                            put("method", p.method)
+                            put("template", p.template)
+                            put("titleTemplate", p.titleTemplate)
+                        })
+                    }
+                    put("interfaces", ifArr)
                 })
             }
             return arr.toString()

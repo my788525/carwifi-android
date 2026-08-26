@@ -6,6 +6,7 @@ import com.carwifi.app.data.AppSettings
 import com.carwifi.app.data.SettingsStore
 import com.carwifi.app.model.AlertMessage
 import com.carwifi.app.model.AlertType
+import com.carwifi.app.model.ChannelConfig
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.NightModeManager
 import kotlinx.coroutines.CoroutineScope
@@ -74,6 +75,29 @@ object Forwarder {
             store.update { copy(queuedMessagesJson = "[]") }
         }
         retryFailed(context)
+    }
+
+    /**
+     * 测试某个渠道：向该渠道挂载的全部接口发送一条测试消息，返回是否至少有一个成功。
+     * 结果会写入审计日志，便于用户在无界面反馈时排查。
+     */
+    suspend fun testChannel(context: Context, channel: ChannelConfig): Boolean {
+        val logger = AuditLogger(context.filesDir)
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val msg = AlertMessage(
+            type = AlertType.SMS,
+            sender = "CarWifi 测试",
+            body = "这是一条来自 CarWifi 的测试推送 ✅（时间 $time）",
+            timestamp = System.currentTimeMillis()
+        )
+        logger.log("手动测试渠道[${channel.name}]（${channel.interfaces.size} 个接口）")
+        val ok = MessageDispatcher(logger).dispatch(msg, listOf(channel))
+        logger.log(
+            if (ok) "✅ 测试渠道[${channel.name}] 发送成功"
+            else "❌ 测试渠道[${channel.name}] 发送失败（检查接口配置 / 网络，详见审计日志）"
+        )
+        return ok
     }
 
     /**

@@ -2,6 +2,7 @@ package com.carwifi.app.dispatch
 
 import com.carwifi.app.model.AlertMessage
 import com.carwifi.app.model.ChannelConfig
+import com.carwifi.app.model.PresetInterface
 import com.carwifi.app.util.Http
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,7 +10,7 @@ import org.json.JSONObject
 import java.io.IOException
 
 /** 企业微信机器人 webhook。 */
-class WeComChannel(override val config: ChannelConfig) : Channel {
+class WeComChannel(override val config: PresetInterface) : Channel {
     override suspend fun send(msg: AlertMessage): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) {
             val content = TemplateRenderer.render(config.template, msg)

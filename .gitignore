@@ -22,5 +22,14 @@ app/build/
 .DS_Store
 captures/
 
+# ---- 本地发版自动化脚本/产物（不入库）----
+_release_*.json
+_release_*.md
+_release_resp*.json
+_payload*.json
+_mkpayload*.py
+_do_release*.py
+_build_release.log
+
 # ---- 系统/杂项 ----
 *.log

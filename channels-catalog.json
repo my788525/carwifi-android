@@ -1,0 +1,44 @@
+{
+  "interfaces": [
+    {
+      "id": "bark-home",
+      "name": "家里 Bark 服务器",
+      "type": "bark",
+      "server": "http://192.168.43.1:8080",
+      "token": "替换为你的Bark设备Key",
+      "method": "POST",
+      "template": "{{event}}\n来自 {{sender}}：{{body}}\n时间 {{time}}",
+      "titleTemplate": "{{event}} · {{device}}"
+    },
+    {
+      "id": "bark-phone2",
+      "name": "备用机 Bark 服务器",
+      "type": "bark",
+      "server": "http://192.168.1.50:8080",
+      "token": "替换为你的Bark设备Key",
+      "method": "POST",
+      "template": "{{event}}\n来自 {{sender}}：{{body}}\n时间 {{time}}",
+      "titleTemplate": "{{event}} · {{device}}"
+    },
+    {
+      "id": "webhook-home",
+      "name": "家里自建 Webhook",
+      "type": "webhook",
+      "server": "http://192.168.43.1:9000/api/notify",
+      "token": "",
+      "method": "POST",
+      "template": "{\"event\":\"{{event}}\",\"sender\":\"{{sender}}\",\"body\":\"{{body}}\",\"time\":\"{{time}}\"}",
+      "titleTemplate": ""
+    },
+    {
+      "id": "serverchan-demo",
+      "name": "Server 酱（示例）",
+      "type": "server_chan",
+      "server": "",
+      "token": "替换为你的SCTxxxxKey",
+      "method": "POST",
+      "template": "{{event}}\n来自 {{sender}}：{{body}}",
+      "titleTemplate": "{{event}} · {{device}}"
+    }
+  ]
+}

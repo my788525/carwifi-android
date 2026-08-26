@@ -2,8 +2,7 @@ package com.carwifi.app.fileshare
 
 import com.carwifi.app.dlna.DlnaContent
 import fi.iki.elonen.NanoHTTPD
-import java.io.File
-import java.io.FileInputStream
+import java.io.InputStream
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -14,15 +13,16 @@ import java.util.Base64
  *
  * 设计原则（贴合车载「静默、稳定、最小维护」）：
  * - 仅监听高位端口（默认 8080），无需 Root。
- * - 共享目录固定为 App 私有外部存储下的 share/，无需 MANAGE_EXTERNAL_STORAGE 等重权限。
+ * - 共享根目录支持多个：App 私有外部存储下的 share/ + 经 SAF 授权的系统目录（如 Music/Download）。
+ *   各根以「根名」路由（/根名/...）。
  * - 可选 HTTP Basic Auth（车机 LAN 内建议设密码），但 DLNA 控制端点按标准不鉴权。
- * - 防目录穿越：所有路径限制在 root 之内。
- * - 媒体文件（media 路径）支持 HTTP Range（206 + Content-Range），主流播放器可流式播放并拖动。
+ * - 防目录穿越：所有路径限制在各根之内。
+ * - 媒体文件支持 HTTP Range（206 + Content-Range），主流播放器可流式播放并拖动。
  * - DLNA 端点（desc.xml、cds.xml、cm.xml、ctl 与 media 路由）仅当 dlnaEnabled 时激活，
  *   配合 SsdpManager 即构成一台可被车机原生媒体 App 发现的媒体服务器。
  */
 class FileShareServer(
-    private val root: File,
+    private val roots: List<ShareRoot>,
     private val port: Int,
     private val password: String,
     private val dlnaEnabled: Boolean,
@@ -69,7 +69,7 @@ class FileShareServer(
 
         return when (session.method) {
             Method.GET -> handleGet(session, uri)
-            Method.PUT -> handlePut(session, safeResolve(uri))
+            Method.PUT -> handlePut(session, uri)
             else -> newFixedLengthResponse(
                 Response.Status.METHOD_NOT_ALLOWED,
                 MIME_PLAINTEXT,
@@ -81,27 +81,26 @@ class FileShareServer(
     // ---------- 文件浏览 / 下载（带 Range）----------
 
     private fun handleGet(session: IHTTPSession, uri: String): Response {
-        val target = safeResolve(uri)
-        if (!target.exists()) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
-        }
-        if (target.isDirectory) {
-            return newFixedLengthResponse(Response.Status.OK, MIME_HTML, renderListing(target))
-        }
-        return serveFileWithRange(target, session)
+        val clean = uri.trimStart('/')
+        if (clean.isEmpty()) return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, renderRootsListing())
+        val seg = clean.split('/', limit = 2)
+        val root = findRoot(seg[0]) ?: return notFound()
+        val rel = if (seg.size > 1) seg[1] else ""
+        if (!root.exists(rel)) return notFound()
+        if (root.isDir(rel)) return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, renderListing(seg[0], rel, root.list(rel)))
+        return serveStream(root, rel, session)
     }
 
     // 支持 HTTP Range 的通用文件响应（媒体流式播放 / 拖动的核心）。
-    private fun serveFileWithRange(target: File, session: IHTTPSession): Response {
-        val len = target.length()
-        val mime = mimeFor(target.name)
+    private fun serveStream(root: ShareRoot, rel: String, session: IHTTPSession): Response {
+        val len = root.size(rel) ?: return notFound()
+        val mime = mimeFor(rel.substringAfterLast('/', ""))
         val range = session.headers["range"]
         if (range != null && range.startsWith("bytes=")) {
             val (a, b) = range.substring(6).split(",", limit = 2)[0].split("-", limit = 2)
             var start: Long
             var end: Long
             if (a.isEmpty()) {
-                // 末尾 N 字节：bytes=-N
                 start = (len - b.toLong()).coerceAtLeast(0L)
                 end = len - 1
             } else {
@@ -110,18 +109,18 @@ class FileShareServer(
             }
             if (start > end || start >= len) {
                 val r = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, MIME_PLAINTEXT, "")
-                r.addHeader("Content-Range", "bytes *" + "/$len")
+                r.addHeader("Content-Range", "bytes */$len")
                 return r
             }
             val size = end - start + 1
-            val stream = FileInputStream(target).also { it.skip(start) }
+            val stream = (root.open(rel) ?: return notFound()).also { it.skip(start) }
             val resp = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime, stream, size)
             resp.addHeader("Content-Range", "bytes $start-$end/$len")
             resp.addHeader("Accept-Ranges", "bytes")
             addMediaHeaders(resp, mime)
             return resp
         }
-        val resp = newFixedLengthResponse(Response.Status.OK, mime, target.inputStream(), len)
+        val resp = newFixedLengthResponse(Response.Status.OK, mime, root.open(rel) ?: return notFound(), len)
         resp.addHeader("Accept-Ranges", "bytes")
         addMediaHeaders(resp, mime)
         return resp
@@ -140,13 +139,14 @@ class FileShareServer(
     // ---------- DLNA 媒体端点 ----------
 
     private fun handleMedia(session: IHTTPSession, uri: String): Response {
-        val rel = uri.removePrefix("/media").trimStart('/')
-        val decoded = runCatching { URLDecoder.decode(rel, "UTF-8") }.getOrDefault(rel)
-        val target = resolveUnderRoot(decoded)
-        if (target == null || !target.exists() || target.isDirectory) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
-        }
-        return serveFileWithRange(target, session)
+        val clean = uri.removePrefix("/media").trimStart('/')
+        if (clean.isEmpty()) return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_HTML, renderRootsListing())
+        val dec = decode(clean)
+        val seg = dec.split('/', limit = 2)
+        val root = findRoot(seg[0]) ?: return notFound()
+        val rel = if (seg.size > 1) seg[1] else ""
+        if (!root.exists(rel) || root.isDir(rel)) return notFound()
+        return serveStream(root, rel, session)
     }
 
     private fun handleContentDirectory(session: IHTTPSession): Response {
@@ -191,33 +191,51 @@ class FileShareServer(
         }
     }
 
-    // 依据 ObjectID（"0"=根，否则为 URL 编码的相对路径）生成 DIDL-Lite 媒体列表。
+    // 依据 ObjectID（"0"=根列表，否则为 根名/相对路径）生成 DIDL-Lite 媒体列表。
     private fun buildBrowse(objectId: String): Pair<String, Int> {
-        val dir = if (objectId == "0") root else resolveUnderRoot(decode(objectId))
-        if (dir == null || !dir.exists() || !dir.isDirectory) return "" to 0
-        val children = dir.listFiles()?.sortedBy { it.name.lowercase() } ?: return "" to 0
-        val parentId = if (dir == root) "0" else encode(relPath(dir))
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
         sb.append("<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0\" ")
         sb.append("xmlns:dc=\"http://purl.org/dc/elements/1.1/\" ")
         sb.append("xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0\">")
-        val folders = children.filter { it.isDirectory }
-        val media = children.filter { it.isFile && isMedia(it.name) }
+        var count = 0
+        if (objectId == "0") {
+            roots.forEach { r ->
+                sb.append("<container id=\"${esc(r.name)}\" parentID=\"0\" restricted=\"1\">")
+                sb.append("<dc:title>${esc(r.name)}</dc:title>")
+                sb.append("<upnp:class>object.container.storageFolder</upnp:class>")
+                sb.append("</container>")
+                count++
+            }
+            sb.append("</DIDL-Lite>")
+            return sb.toString() to count
+        }
+        val dec = decode(objectId)
+        val seg = dec.split('/', limit = 2)
+        val root = findRoot(seg[0]) ?: return "" to 0
+        val rel = if (seg.size > 1) seg[1] else ""
+        if (!root.exists(rel) || !root.isDir(rel)) return "" to 0
+        val entries = root.list(rel)
+        val parentId = if (rel.isEmpty()) "0" else encode("${root.name}/$rel")
+        val folders = entries.filter { it.isDir }
+        val media = entries.filter { it.isDir.not() && isMedia(it.name) }
         folders.forEach { f ->
-            sb.append("<container id=\"${encode(relPath(f))}\" parentID=\"$parentId\" restricted=\"1\">")
+            val childRel = if (rel.isEmpty()) f.name else "$rel/${f.name}"
+            sb.append("<container id=\"${encode("${root.name}/$childRel")}\" parentID=\"$parentId\" restricted=\"1\">")
             sb.append("<dc:title>${esc(f.name)}</dc:title>")
             sb.append("<upnp:class>object.container.storageFolder</upnp:class>")
             sb.append("</container>")
         }
         media.forEach { file ->
+            val childRel = if (rel.isEmpty()) file.name else "$rel/${file.name}"
+            val objId = "${root.name}/$childRel"
             val mime = mimeFor(file.name)
             val cls = mediaClass(mime)
-            val url = "http://$localIp:$port/media/${encode(relPath(file))}"
-            sb.append("<item id=\"${encode(relPath(file))}\" parentID=\"$parentId\" restricted=\"1\">")
+            val url = "http://$localIp:$port/media/${encode(objId)}"
+            sb.append("<item id=\"${encode(objId)}\" parentID=\"$parentId\" restricted=\"1\">")
             sb.append("<dc:title>${esc(file.name)}</dc:title>")
             sb.append("<upnp:class>$cls</upnp:class>")
-            sb.append("<res protocolInfo=\"http-get:*:$mime:*\" size=\"${file.length()}\">$url</res>")
+            sb.append("<res protocolInfo=\"http-get:*:$mime:*\">$url</res>")
             sb.append("</item>")
         }
         sb.append("</DIDL-Lite>")
@@ -226,37 +244,24 @@ class FileShareServer(
 
     // ---------- 工具 ----------
 
-    private fun handlePut(session: IHTTPSession, target: File): Response {
-        if (target.isDirectory) {
-            return newFixedLengthResponse(
-                Response.Status.BAD_REQUEST,
-                MIME_PLAINTEXT,
-                "Cannot PUT a directory"
-            )
-        }
-        return try {
-            target.parentFile?.mkdirs()
-            val len = session.headers["content-length"]?.toLongOrNull() ?: -1L
-            val buf = if (len > 0) {
-                session.inputStream.readNBytes(len.toInt())
-            } else {
-                session.inputStream.readBytes()
-            }
-            target.outputStream().use { it.write(buf) }
-            newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "Saved ${target.name}")
-        } catch (e: Exception) {
-            newFixedLengthResponse(
-                Response.Status.INTERNAL_ERROR,
-                MIME_PLAINTEXT,
-                "Error: ${e.message}"
-            )
+    private fun handlePut(session: IHTTPSession, uri: String): Response {
+        val clean = uri.trimStart('/')
+        if (clean.isEmpty()) return badRequest("Cannot PUT root")
+        val seg = clean.split('/', limit = 2)
+        val root = findRoot(seg[0]) ?: return notFound()
+        val rel = if (seg.size > 1) seg[1] else ""
+        val len = session.headers["content-length"]?.toLongOrNull() ?: -1L
+        val buf = if (len > 0) session.inputStream.readNBytes(len.toInt()) else session.inputStream.readBytes()
+        return if (root.write(rel, buf)) {
+            newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "Saved")
+        } else {
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Write failed")
         }
     }
 
     private fun readBody(session: IHTTPSession): String {
         val len = session.headers["content-length"]?.toLongOrNull() ?: -1L
-        val bytes = if (len > 0) session.inputStream.readNBytes(len.toInt())
-        else session.inputStream.readBytes()
+        val bytes = if (len > 0) session.inputStream.readNBytes(len.toInt()) else session.inputStream.readBytes()
         return String(bytes, StandardCharsets.UTF_8)
     }
 
@@ -275,25 +280,13 @@ class FileShareServer(
             DlnaContent.CD_SERVICE, "Fault",
             "<detail>Unsupported action</detail>"
         )
-        val r = newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/xml; charset=utf-8", inner)
-        return r
+        return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/xml; charset=utf-8", inner)
     }
 
-    // 将 URI 解析为 root 内的文件，越界则返回 root。
-    private fun safeResolve(uri: String): File {
-        val rel = uri.trimStart('/')
-        val f = File(root, rel)
-        return if (!f.canonicalPath.startsWith(root.canonicalPath)) root else f
-    }
+    private fun findRoot(name: String): ShareRoot? = roots.firstOrNull { it.name == name }
 
-    // 与 safeResolve 同语义，但接受已解码的相对路径字符串。
-    private fun resolveUnderRoot(rel: String): File? {
-        val f = File(root, rel)
-        return if (!f.canonicalPath.startsWith(root.canonicalPath)) null else f
-    }
-
-    private fun relPath(file: File): String =
-        file.relativeTo(root).path.replace('\\', '/')
+    private fun notFound() = newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
+    private fun badRequest(msg: String) = newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, msg)
 
     private fun decode(s: String): String =
         runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
@@ -323,28 +316,45 @@ class FileShareServer(
         else -> "object.item"
     }
 
-    private fun renderListing(dir: File): String {
+    private fun renderRootsListing(): String {
         val sb = StringBuilder()
         sb.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
         sb.append("<title>CarWifi 共享文件</title>")
         sb.append("<style>body{font-family:sans-serif;padding:16px}h1{font-size:18px}")
         sb.append("li{margin:4px 0}a{text-decoration:none;color:#1769ff}</style></head><body>")
         sb.append("<h1>本机共享文件</h1>")
-        sb.append("<p>把车机要访问的文件放进此目录即可。下方可上传文件到当前目录。</p>")
+        sb.append("<p>把车机要访问的文件放进对应目录即可（如 app 私有目录可直接上传；系统目录只读）。</p>")
         sb.append("<ul>")
-        dir.listFiles()?.sortedBy { it.name.lowercase() }?.forEach { f ->
-            val name = esc(f.name)
-            val icon = if (f.isDirectory) "📁" else "📄"
-            sb.append("<li>$icon <a href=\"${encode(f.name)}\">$name</a>")
-            if (!f.isDirectory) sb.append(" <small>(${f.length()} B)</small>")
+        roots.forEach { r ->
+            sb.append("<li>📁 <a href=\"${encode(r.name)}\">${esc(r.name)}</a></li>")
+        }
+        sb.append("</ul></body></html>")
+        return sb.toString()
+    }
+
+    private fun renderListing(rootName: String, rel: String, entries: List<ShareEntry>): String {
+        val sb = StringBuilder()
+        sb.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+        sb.append("<title>CarWifi 共享文件 - $rootName</title>")
+        sb.append("<style>body{font-family:sans-serif;padding:16px}h1{font-size:18px}")
+        sb.append("li{margin:4px 0}a{text-decoration:none;color:#1769ff}</style></head><body>")
+        sb.append("<h1>目录：$rootName${if (rel.isNotEmpty()) " / $rel" else ""}</h1>")
+        sb.append("<ul>")
+        entries.sortedBy { it.name.lowercase() }.forEach { e ->
+            val icon = if (e.isDir) "📁" else "📄"
+            val childRel = if (rel.isEmpty()) e.name else "$rel/${e.name}"
+            sb.append("<li>$icon <a href=\"${encode("$rootName/$childRel")}\">${esc(e.name)}</a>")
+            if (!e.isDir) sb.append(" <small>(${e.size} B)</small>")
             sb.append("</li>")
-        } ?: sb.append("<li>（空目录）</li>")
+        }
         sb.append("</ul>")
-        sb.append("<hr><h2>上传文件到当前目录</h2>")
-        sb.append("<input type=\"file\" id=\"file\"><button onclick=\"upload()\">上传</button>")
-        sb.append("<script>function upload(){var f=document.getElementById('file').files[0];")
-        sb.append("if(!f)return;var x=new XMLHttpRequest();x.open('PUT',encodeURIComponent(f.name));")
-        sb.append("x.send(f);x.onload=function(){location.reload();};}</script>")
+        if (roots.firstOrNull { it.name == rootName } is FileShareRoot) {
+            sb.append("<hr><h2>上传文件到当前目录</h2>")
+            sb.append("<input type=\"file\" id=\"file\"><button onclick=\"upload()\">上传</button>")
+            sb.append("<script>function upload(){var f=document.getElementById('file').files[0];")
+            sb.append("if(!f)return;var x=new XMLHttpRequest();x.open('PUT',encodeURIComponent('$rootName/$rel/'+f.name));")
+            sb.append("x.send(f);x.onload=function(){location.reload();};}</script>")
+        }
         sb.append("</body></html>")
         return sb.toString()
     }

@@ -1,5 +1,6 @@
 package com.carwifi.app.ui
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -9,10 +10,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import com.carwifi.app.data.AppSettings
 import com.carwifi.app.model.ChannelConfig
 import com.carwifi.app.model.ChannelType
+import com.carwifi.app.model.PresetInterface
 import com.carwifi.app.util.NightModeManager
 import java.util.UUID
 
@@ -52,10 +56,12 @@ fun SettingsScreen(
     onRefreshAudit: () -> Unit,
     fileShareUrl: String,
     fileSharePath: String,
-    scanResult: String?,
-    scanTargetId: String?,
-    onRequestScan: (String) -> Unit,
-    onConsumeScan: () -> Unit
+    catalog: List<PresetInterface>,
+    onRefreshCatalog: () -> Unit,
+    extraShareUris: List<String>,
+    onPickFolder: () -> Unit,
+    onRemoveFolder: (String) -> Unit,
+    onTestChannel: (ChannelConfig) -> Unit
 ) {
     var showHotspotGuide by remember { mutableStateOf(false) }
 
@@ -205,13 +211,35 @@ fun SettingsScreen(
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "共享文件夹：$fileSharePath",
+                                "共享根目录：$fileSharePath",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
-                                "把要共享给车机的文件放入该文件夹即可（无需额外存储权限）。建议设置访问密码，避免同网络其他人访问。",
+                                "「app」为 App 私有目录（可直接上传文件）；系统目录（如 Music）为只读，便于直接播共享的音乐 / 视频。",
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Spacer(Modifier.height(10.dp))
+                            Divider()
+                            Spacer(Modifier.height(8.dp))
+                            Text("共享系统文件夹（如 Music / Download）", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(6.dp))
+                            OutlinedButton(onClick = onPickFolder, modifier = Modifier.fillMaxWidth()) {
+                                Text("+ 添加共享文件夹")
+                            }
+                            if (extraShareUris.isNotEmpty()) {
+                                Spacer(Modifier.height(6.dp))
+                                extraShareUris.forEach { uri ->
+                                    val name = runCatching {
+                                        DocumentFile.fromTreeUri(LocalContext.current, Uri.parse(uri))?.name
+                                    }.getOrNull() ?: uri
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("📁 $name", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                        IconButton(onClick = { onRemoveFolder(uri) }) {
+                                            Text("🗑", style = MaterialTheme.typography.bodyLarge)
+                                        }
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(8.dp))
                             SwitchRow("DLNA 媒体服务器（车机原生媒体 App 自动发现）", settings.dlnaEnabled) {
                                 onPatch { copy(dlnaEnabled = it) }
@@ -308,8 +336,9 @@ fun SettingsScreen(
                                         type = ChannelType.BARK,
                                         name = "新渠道",
                                         enabled = true,
-                                        url = "", token = "",
-                                        template = ChannelConfig.DEFAULT_TEMPLATE
+                                        interfaces = emptyList(),
+                                        defaultTemplate = ChannelConfig.DEFAULT_TEMPLATE,
+                                        defaultTitleTemplate = ChannelConfig.DEFAULT_TITLE
                                     ))
                                 }
                             }) { Text("+ 添加") }
@@ -318,6 +347,8 @@ fun SettingsScreen(
                         settings.channels.forEachIndexed { idx, ch ->
                             ChannelCard(
                                 channel = ch,
+                                catalog = catalog,
+                                onRefreshCatalog = onRefreshCatalog,
                                 onUpdate = { updated ->
                                     onPatch {
                                         copy(channels = channels.toMutableList().also { it[idx] = updated })
@@ -326,10 +357,7 @@ fun SettingsScreen(
                                 onDelete = {
                                     onPatch { copy(channels = channels.filter { c -> c.id != ch.id }) }
                                 },
-                                scanResult = scanResult,
-                                scanTargetId = scanTargetId,
-                                onRequestScan = onRequestScan,
-                                onConsumeScan = onConsumeScan
+                                onTestChannel = onTestChannel
                             )
                             Spacer(Modifier.height(10.dp))
                         }
@@ -394,23 +422,20 @@ private fun SwitchRow(label: String, checked: Boolean, onToggle: (Boolean) -> Un
 @Composable
 private fun ChannelCard(
     channel: ChannelConfig,
+    catalog: List<PresetInterface>,
+    onRefreshCatalog: () -> Unit,
     onUpdate: (ChannelConfig) -> Unit,
     onDelete: () -> Unit,
-    scanResult: String?,
-    scanTargetId: String?,
-    onRequestScan: (String) -> Unit,
-    onConsumeScan: () -> Unit
+    onTestChannel: (ChannelConfig) -> Unit
 ) {
     val types = ChannelType.entries
     var expanded by remember { mutableStateOf(false) }
-    val hasUrl = channel.type == ChannelType.BARK || channel.type == ChannelType.WEBHOOK
+    val hasServer = channel.type == ChannelType.BARK || channel.type == ChannelType.WEBHOOK
 
-    // 扫码回填：仅当本次扫码目标为本卡片且结果为非空时应用，避免影响其他渠道
-    LaunchedEffect(scanResult) {
-        if (scanResult != null && scanTargetId == channel.id && hasUrl) {
-            onUpdate(applyScanToChannel(channel, scanResult))
-            onConsumeScan()
-        }
+    fun updateIface(iface: PresetInterface, transform: PresetInterface.() -> PresetInterface) {
+        onUpdate(channel.copy(interfaces = channel.interfaces.map {
+            if (it.id == iface.id) it.transform() else it
+        }))
     }
 
     Card(
@@ -435,7 +460,8 @@ private fun ChannelCard(
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         types.forEach { t ->
                             DropdownMenuItem(text = { Text(t.label) }, onClick = {
-                                onUpdate(channel.copy(type = t))
+                                // 切换类型时清空已选接口，避免类型错配
+                                onUpdate(channel.copy(type = t, interfaces = emptyList()))
                                 expanded = false
                             })
                         }
@@ -450,92 +476,130 @@ private fun ChannelCard(
                 label = { Text("名称") },
                 modifier = Modifier.fillMaxWidth()
             )
-            if (channel.type != ChannelType.WEBHOOK) {
-                OutlinedTextField(
-                    value = channel.token,
-                    onValueChange = { onUpdate(channel.copy(token = it)) },
-                    label = { Text("Key / Token") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+
+            Spacer(Modifier.height(8.dp))
+            Divider()
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("接口配置（来自 GitHub）", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onRefreshCatalog) { Text("刷新") }
             }
-            if (channel.type == ChannelType.WEBHOOK) {
-                UrlFieldWithScan(
-                    value = channel.url,
-                    onValueChange = { onUpdate(channel.copy(url = it)) },
-                    label = "完整端点 URL（可点 📷 扫码填写）",
-                    modifier = Modifier.fillMaxWidth(),
-                    onRequestScan = { onRequestScan(channel.id) }
+            val matching = catalog.filter { it.type == channel.type }
+            if (matching.isEmpty()) {
+                Text(
+                    "点「刷新」从 GitHub 拉取接口配置（仓库根 channels-catalog.json）。也可下方「手动添加接口」。",
+                    style = MaterialTheme.typography.bodySmall
                 )
-                Row {
-                    OutlinedTextField(
-                        value = channel.method,
-                        onValueChange = { onUpdate(channel.copy(method = it.uppercase())) },
-                        label = { Text("方法 GET/POST") },
-                        modifier = Modifier.weight(1f)
-                    )
+            } else {
+                matching.forEach { cat ->
+                    val checked = channel.interfaces.any { it.id == cat.id }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { on ->
+                                onUpdate(
+                                    if (on) channel.copy(interfaces = channel.interfaces + cat.copy(id = cat.id))
+                                    else channel.copy(interfaces = channel.interfaces.filter { it.id != cat.id })
+                                )
+                            }
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(cat.name.ifBlank { cat.type.label }, style = MaterialTheme.typography.bodyMedium)
+                            if (cat.server.isNotBlank()) {
+                                Text(cat.server, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                 }
-            } else if (channel.type == ChannelType.BARK) {
-                UrlFieldWithScan(
-                    value = channel.url,
-                    onValueChange = { onUpdate(channel.copy(url = it)) },
-                    label = "服务器地址（留空=官方 api.day.app，可点 📷 扫码填写）",
-                    modifier = Modifier.fillMaxWidth(),
-                    onRequestScan = { onRequestScan(channel.id) }
-                )
             }
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = {
+                    onUpdate(
+                        channel.copy(
+                            interfaces = channel.interfaces + PresetInterface(
+                                id = UUID.randomUUID().toString(),
+                                type = channel.type
+                            )
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("+ 手动添加接口") }
+
+            channel.interfaces.forEach { iface ->
+                Spacer(Modifier.height(8.dp))
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                iface.name.ifBlank { "接口" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = {
+                                onUpdate(channel.copy(interfaces = channel.interfaces.filter { it.id != iface.id }))
+                            }) { Text("🗑") }
+                        }
+                        if (channel.type != ChannelType.WEBHOOK) {
+                            OutlinedTextField(
+                                value = iface.token,
+                                onValueChange = { updateIface(iface) { copy(token = it) } },
+                                label = { Text("Key / Token") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        if (hasServer) {
+                            OutlinedTextField(
+                                value = iface.server,
+                                onValueChange = { updateIface(iface) { copy(server = it) } },
+                                label = { Text("服务器地址") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        if (channel.type == ChannelType.WEBHOOK) {
+                            OutlinedTextField(
+                                value = iface.method,
+                                onValueChange = { updateIface(iface) { copy(method = it.uppercase()) } },
+                                label = { Text("方法 GET/POST") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        OutlinedTextField(
+                            value = iface.template,
+                            onValueChange = { updateIface(iface) { copy(template = it) } },
+                            label = { Text("Body 模板（{{event}}/{{sender}}/{{body}}/{{time}}）") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Divider()
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = channel.template,
-                onValueChange = { onUpdate(channel.copy(template = it)) },
-                label = { Text("Body 模板（{{event}}/{{sender}}/{{body}}/{{time}}）") },
+                value = channel.defaultTemplate,
+                onValueChange = { onUpdate(channel.copy(defaultTemplate = it)) },
+                label = { Text("默认 Body 模板（兜底，接口未指定时使用）") },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 2
+                minLines = 5
             )
-            Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Switch(channel.enabled, onCheckedChange = { onUpdate(channel.copy(enabled = it)) })
                 Text("启用", modifier = Modifier.align(Alignment.CenterVertically))
+                Spacer(Modifier.weight(1f))
+                Button(onClick = { onTestChannel(channel) }) { Text("测试") }
             }
         }
     }
-}
-
-@Composable
-private fun UrlFieldWithScan(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    onRequestScan: () -> Unit
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        modifier = modifier,
-        trailingIcon = {
-            IconButton(onClick = onRequestScan) {
-                Text("📷", style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-    )
-}
-
-/**
- * 将扫码得到的文本解析为渠道配置：
- * - 形如 http(s)://host:port[/token] 的 URL：Bark 拆为「服务器地址 + Key/Token」，Webhook 原样填入端点；
- * - 非 URL（纯 Key/Token）：填入 Token 字段。
- * 这样在手机上无需手打长地址，扫一下另一台 Bark 服务器手机上的二维码即可自动填好。
- */
-private fun applyScanToChannel(channel: ChannelConfig, text: String): ChannelConfig {
-    val t = text.trim()
-    val isUrl = t.startsWith("http://", ignoreCase = true) || t.startsWith("https://", ignoreCase = true)
-    if (!isUrl) return channel.copy(token = t)
-    return runCatching {
-        val u = java.net.URI(t)
-        val base = "${u.scheme}://${u.host}" + if (u.port != -1) ":${u.port}" else ""
-        val seg = u.path.trim('/').split('/').firstOrNull()?.takeIf { it.isNotBlank() && it != "push" }
-        when (channel.type) {
-            ChannelType.WEBHOOK -> channel.copy(url = t)
-            else -> channel.copy(url = base, token = seg ?: channel.token)
-        }
-    }.getOrDefault(channel.copy(url = t))
 }

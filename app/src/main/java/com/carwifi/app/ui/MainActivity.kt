@@ -17,15 +17,16 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
 import com.carwifi.app.core.CoreService
 import com.carwifi.app.data.AppSettings
+import com.carwifi.app.data.ChannelCatalog
 import com.carwifi.app.data.SettingsStore
 import com.carwifi.app.dispatch.Forwarder
 import com.carwifi.app.fileshare.FileShareManager
+import com.carwifi.app.model.ChannelConfig
+import com.carwifi.app.model.PresetInterface
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.ComponentGate
 import com.carwifi.app.util.UpdateChecker
 import com.carwifi.app.workers.MonitorScheduler
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -46,20 +47,29 @@ class MainActivity : ComponentActivity() {
     private var fileShareUrl by mutableStateOf("")
     private var fileSharePath by mutableStateOf("")
 
-    // 扫码填写（Bark / Webhook 地址）：保存最近一次扫描结果与目标渠道 id
-    private var scanResult by mutableStateOf<String?>(null)
-    private var scanTargetId by mutableStateOf<String?>(null)
+    // GitHub 接口配置目录（供推送渠道勾选）
+    private var catalog by mutableStateOf<List<PresetInterface>>(emptyList())
 
-    private val cameraPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) scanLauncher.launch(ScanOptions())
-        else Toast.makeText(this, "需要相机权限才能扫码填写", Toast.LENGTH_SHORT).show()
-    }
-
-    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
-        val contents = result.contents
-        if (!contents.isNullOrBlank()) scanResult = contents
+    // SAF 授权文件夹选择器（共享系统目录如 Music/Download）
+    private val folderLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                val list = settingsStore.current().extraShareUris().toMutableList()
+                list.add(uri.toString())
+                settingsStore.update { copy(extraShareUrisJson = org.json.JSONArray(list).toString()) }
+                // 重启文件服务器以加载新根目录
+                FileShareManager.stop()
+                sendBroadcast(Intent(CoreService.ACTION_RECONCILE))
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -83,6 +93,11 @@ class MainActivity : ComponentActivity() {
         runCatching { MonitorScheduler.schedule(this) }
         audit = uiLogger.recent()
         refreshBatteryExempt()
+
+        // 拉取 GitHub 接口配置目录（失败则用上次缓存）
+        lifecycleScope.launch(Dispatchers.IO) {
+            catalog = ChannelCatalog.fetch(this@MainActivity)
+        }
 
         // 首启即按当前设置同步监听组件（短信转发关闭则真正停止监听），无需点开开关
         lifecycleScope.launch(Dispatchers.IO) {
@@ -149,15 +164,34 @@ class MainActivity : ComponentActivity() {
                     onRefreshAudit = { audit = uiLogger.recent() },
                     fileShareUrl = fileShareUrl,
                     fileSharePath = fileSharePath,
-                    scanResult = scanResult,
-                    scanTargetId = scanTargetId,
-                    onRequestScan = { id ->
-                        scanTargetId = id
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    catalog = catalog,
+                    onRefreshCatalog = {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            catalog = ChannelCatalog.fetch(this@MainActivity)
+                        }
                     },
-                    onConsumeScan = {
-                        scanResult = null
-                        scanTargetId = null
+                    extraShareUris = settings.extraShareUris(),
+                    onPickFolder = { folderLauncher.launch(null) },
+                    onRemoveFolder = { uri ->
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            val list = settingsStore.current().extraShareUris().toMutableList()
+                            list.remove(uri)
+                            settingsStore.update { copy(extraShareUrisJson = org.json.JSONArray(list).toString()) }
+                            FileShareManager.stop()
+                            sendBroadcast(Intent(CoreService.ACTION_RECONCILE))
+                        }
+                    },
+                    onTestChannel = { ch ->
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            val ok = Forwarder.testChannel(this@MainActivity, ch)
+                            runOnUiThread {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    if (ok) "✅ 测试发送成功（详见审计日志）" else "❌ 测试失败，详见审计日志",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                     }
                 )
 
@@ -186,7 +220,10 @@ class MainActivity : ComponentActivity() {
         audit = uiLogger.recent()
         refreshBatteryExempt()
         fileShareUrl = FileShareManager.getAccessUrl(this)
-        fileSharePath = FileShareManager.rootDir(this).absolutePath
+        lifecycleScope.launch(Dispatchers.IO) {
+            val n = settingsStore.current().extraShareUris().size
+            fileSharePath = if (n > 0) "app + $n 个授权目录" else "app"
+        }
     }
 
     private fun currentVersion(): String =

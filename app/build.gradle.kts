@@ -27,8 +27,8 @@ android {
         applicationId = "com.carwifi.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.5.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -100,6 +100,6 @@ dependencies {
     // NanoHTTPD：车载 HTTP 文件共享服务器（随热点自动起停，轻量、无需 Root）
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 
-    // ZXing Android Embedded：扫码填写 Bark / Webhook 地址（离线、自包含、零模型下载）
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // SAF 文档访问（共享系统目录如 Music/Download，无需 MANAGE_EXTERNAL_STORAGE）
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }
