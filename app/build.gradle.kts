@@ -27,8 +27,8 @@ android {
         applicationId = "com.carwifi.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.3.2"
+        versionCode = 7
+        versionName = "1.4.0"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -94,13 +94,12 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Shizuku (for hidden tethering API on Android 10+)
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
-
     // WorkManager：低功耗周期监测（电量阈值 + 夜间模式补发）
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // NanoHTTPD：车载 HTTP 文件共享服务器（随热点自动起停，轻量、无需 Root）
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // ZXing Android Embedded：扫码填写 Bark / Webhook 地址（离线、自包含、零模型下载）
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }

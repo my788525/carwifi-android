@@ -10,7 +10,6 @@ import com.carwifi.app.model.AlertType
 import com.carwifi.app.tethering.TetheringController
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.BatteryUtils
-import com.carwifi.app.util.DeviceUtils
 import com.carwifi.app.util.NightModeManager
 import kotlinx.coroutines.flow.first
 
@@ -48,7 +47,8 @@ class MonitorWorker(ctx: android.content.Context, params: WorkerParameters) :
         }
 
         // ---- 热点保活（应对厂商「无连接自动关闭热点」等场景）----
-        val controlHotspot = !DeviceUtils.isXiaomi() || s.shizukuReady
+        // 已移除 Shizuku：本应用无法程序化控制热点，保活交由用户在系统设置手动处理。
+        val controlHotspot = false
         if (s.tetheringEnabled && controlHotspot && BatteryUtils.isCharging(applicationContext)) {
             if (!tethering.isHotspotOn()) {
                 val ok = tethering.startHotspot()

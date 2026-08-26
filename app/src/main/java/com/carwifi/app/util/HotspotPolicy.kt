@@ -3,11 +3,12 @@ package com.carwifi.app.util
 import com.carwifi.app.data.AppSettings
 
 /**
- * 热点控制策略：判断「是否由本应用经 Shizuku 接管热点」。
- * - 小米 / Redmi / POCO：系统自带「自动任务」可充电开热点，无需应用接管；
- *   仅在用户已授权 Shizuku 时才由应用接管（避免无谓失败与日志噪音）。
- * - 其他机型：必须由本应用经 Shizuku 控制。
+ * 热点控制策略：判断「是否由本应用接管热点」。
+ *
+ * 已移除 Shizuku 依赖：普通应用（无 Root / 无 Shizuku）无法程序化控制热点，
+ * 因此本方法恒返回 false。热点由用户在系统设置手动开启，或借助厂商自带
+ * 「自动任务 / 情景智能」（如小米：充电时自动开热点）实现免手动。
  */
 object HotspotPolicy {
-    fun shouldControlByApp(s: AppSettings): Boolean = !DeviceUtils.isXiaomi() || s.shizukuReady
+    fun shouldControlByApp(s: AppSettings): Boolean = false
 }

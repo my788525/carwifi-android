@@ -20,11 +20,12 @@ import com.carwifi.app.data.AppSettings
 import com.carwifi.app.data.SettingsStore
 import com.carwifi.app.dispatch.Forwarder
 import com.carwifi.app.fileshare.FileShareManager
-import com.carwifi.app.shizuku.ShizukuStarter
 import com.carwifi.app.util.AuditLogger
 import com.carwifi.app.util.ComponentGate
 import com.carwifi.app.util.UpdateChecker
 import com.carwifi.app.workers.MonitorScheduler
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -44,6 +45,22 @@ class MainActivity : ComponentActivity() {
     private var updateTarget by mutableStateOf<UpdateChecker.ReleaseInfo?>(null)
     private var fileShareUrl by mutableStateOf("")
     private var fileSharePath by mutableStateOf("")
+
+    // 扫码填写（Bark / Webhook 地址）：保存最近一次扫描结果与目标渠道 id
+    private var scanResult by mutableStateOf<String?>(null)
+    private var scanTargetId by mutableStateOf<String?>(null)
+
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) scanLauncher.launch(ScanOptions())
+        else Toast.makeText(this, "需要相机权限才能扫码填写", Toast.LENGTH_SHORT).show()
+    }
+
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents
+        if (!contents.isNullOrBlank()) scanResult = contents
+    }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -113,8 +130,6 @@ class MainActivity : ComponentActivity() {
                     settings = settings,
                     isXiaomi = com.carwifi.app.util.DeviceUtils.isXiaomi(),
                     onPatch = onPatch,
-                    shizukuReady = settings.shizukuReady,
-                    onRequestShizuku = { requestShizuku() },
                     onOpenNotifListener = { openNotifListener() },
                     onOpenBatteryOpt = { openBatteryOptimization() },
                     batteryExempt = batteryExempt,
@@ -133,7 +148,17 @@ class MainActivity : ComponentActivity() {
                     auditLines = audit,
                     onRefreshAudit = { audit = uiLogger.recent() },
                     fileShareUrl = fileShareUrl,
-                    fileSharePath = fileSharePath
+                    fileSharePath = fileSharePath,
+                    scanResult = scanResult,
+                    scanTargetId = scanTargetId,
+                    onRequestScan = { id ->
+                        scanTargetId = id
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    },
+                    onConsumeScan = {
+                        scanResult = null
+                        scanTargetId = null
+                    }
                 )
 
                 updateTarget?.let { info ->
@@ -171,23 +196,6 @@ class MainActivity : ComponentActivity() {
         batteryExempt = runCatching {
             (getSystemService(PowerManager::class.java)).isIgnoringBatteryOptimizations(packageName)
         }.getOrDefault(false)
-    }
-
-    private fun requestShizuku() {
-        runCatching {
-            ShizukuStarter.requestPermission(this, 1001) { granted ->
-                lifecycleScope.launch {
-                    settingsStore.update { copy(shizukuReady = granted) }
-                }
-                Toast.makeText(
-                    this,
-                    if (granted) "Shizuku 授权成功" else "Shizuku 授权被拒绝",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }.onFailure {
-            Toast.makeText(this, "Shizuku 未就绪：请先安装 Shizuku App 并授权", Toast.LENGTH_LONG).show()
-        }
     }
 
     private fun openNotifListener() {

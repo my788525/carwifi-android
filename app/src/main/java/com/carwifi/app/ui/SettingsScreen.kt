@@ -28,14 +28,11 @@ fun CarWifiTheme(content: @Composable () -> Unit) {
 
 private const val GUIDE_XIAOMI = "你的小米 / Redmi / POCO 手机系统已自带「自动任务」，可直接实现「充电时自动开启个人热点」，无需本应用接管：\n\n" +
     "设置 → 电池与性能 → 自动任务 → 新建 → 触发条件选「充电」→ 操作选「打开个人热点」。\n\n" +
-    "如仍希望由本应用接管（通过 Shizuku 调用系统接口），请先在下方「Shizuku 授权」卡片完成授权，授权成功后充电即自动开热点。"
+    "开启后本应用仍会按设置转发短信 / 未接来电 / 低电量，并随热点自动共享文件。"
 
-private const val GUIDE_OTHER = "本机系统未自带「充电自动开热点」功能，需通过 Shizuku 授权本应用调用系统热点接口：\n\n" +
-    "1. 在手机上安装 Shizuku（GitHub / F-Droid 可获取）。\n" +
-    "2. 打开 Shizuku，按提示开启「无线调试」：设置 → 关于手机 → 连续点击「版本号」开启开发者选项 → 开发者选项 → 无线调试，然后在 Shizuku 中启动。\n" +
-    "3. 回到本应用，在下方「Shizuku 授权」卡片点「请求授权」，在 Shizuku 弹窗中允许。\n" +
-    "4. 授权成功后，充电时本应用将自动开启 WiFi 热点；未授权时仅作提示，需手动开启。\n\n" +
-    "（第 2 步路径因机型而异，请以实际系统为准。）"
+private const val GUIDE_OTHER = "本应用已移除热点自动开启的系统接口调用（普通应用无 Root / Shizuku 无法稳定控制热点）。请在系统设置手动开启热点：\n\n" +
+    "设置 → 连接 → 个人热点 / 便携式 WLAN 热点 → 打开「便携式 WLAN 热点」。\n\n" +
+    "部分机型可在「自动任务 / 情景智能 / 定时任务」中设置「充电时自动开热点」以实现免手动。"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,8 +40,6 @@ fun SettingsScreen(
     settings: AppSettings,
     isXiaomi: Boolean,
     onPatch: (AppSettings.() -> AppSettings) -> Unit,
-    shizukuReady: Boolean,
-    onRequestShizuku: () -> Unit,
     onOpenNotifListener: () -> Unit,
     onOpenBatteryOpt: () -> Unit,
     batteryExempt: Boolean,
@@ -56,7 +51,11 @@ fun SettingsScreen(
     auditLines: List<String>,
     onRefreshAudit: () -> Unit,
     fileShareUrl: String,
-    fileSharePath: String
+    fileSharePath: String,
+    scanResult: String?,
+    scanTargetId: String?,
+    onRequestScan: (String) -> Unit,
+    onConsumeScan: () -> Unit
 ) {
     var showHotspotGuide by remember { mutableStateOf(false) }
 
@@ -300,26 +299,6 @@ fun SettingsScreen(
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Shizuku 授权（自动开热点必需）", style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.weight(1f))
-                            AssistChip(
-                                onClick = onRequestShizuku,
-                                label = { Text(if (shizukuReady) "已授权" else "请求授权") }
-                            )
-                        }
-                        Text(
-                            if (shizukuReady) "✅ Shizuku 已就绪，可自动开热点"
-                            else "⚠ 未就绪：请先安装并运行 Shizuku，再点「请求授权」。否则热点只能手动开启。",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("推送渠道", style = MaterialTheme.typography.titleMedium)
                             Spacer(Modifier.weight(1f))
                             Button(onClick = {
@@ -346,7 +325,11 @@ fun SettingsScreen(
                                 },
                                 onDelete = {
                                     onPatch { copy(channels = channels.filter { c -> c.id != ch.id }) }
-                                }
+                                },
+                                scanResult = scanResult,
+                                scanTargetId = scanTargetId,
+                                onRequestScan = onRequestScan,
+                                onConsumeScan = onConsumeScan
                             )
                             Spacer(Modifier.height(10.dp))
                         }
@@ -386,7 +369,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showHotspotGuide = false }) { Text("知道了") }
             },
-            title = { Text(if (isXiaomi) "充电自动开热点 · 操作提示" else "充电自动开热点 · 操作提示（需 Shizuku）") },
+            title = { Text("充电自动开热点 · 操作提示") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(if (isXiaomi) GUIDE_XIAOMI else GUIDE_OTHER)
@@ -412,10 +395,24 @@ private fun SwitchRow(label: String, checked: Boolean, onToggle: (Boolean) -> Un
 private fun ChannelCard(
     channel: ChannelConfig,
     onUpdate: (ChannelConfig) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    scanResult: String?,
+    scanTargetId: String?,
+    onRequestScan: (String) -> Unit,
+    onConsumeScan: () -> Unit
 ) {
     val types = ChannelType.entries
     var expanded by remember { mutableStateOf(false) }
+    val hasUrl = channel.type == ChannelType.BARK || channel.type == ChannelType.WEBHOOK
+
+    // 扫码回填：仅当本次扫码目标为本卡片且结果为非空时应用，避免影响其他渠道
+    LaunchedEffect(scanResult) {
+        if (scanResult != null && scanTargetId == channel.id && hasUrl) {
+            onUpdate(applyScanToChannel(channel, scanResult))
+            onConsumeScan()
+        }
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -462,11 +459,12 @@ private fun ChannelCard(
                 )
             }
             if (channel.type == ChannelType.WEBHOOK) {
-                OutlinedTextField(
+                UrlFieldWithScan(
                     value = channel.url,
                     onValueChange = { onUpdate(channel.copy(url = it)) },
-                    label = { Text("完整端点 URL") },
-                    modifier = Modifier.fillMaxWidth()
+                    label = "完整端点 URL（可点 📷 扫码填写）",
+                    modifier = Modifier.fillMaxWidth(),
+                    onRequestScan = { onRequestScan(channel.id) }
                 )
                 Row {
                     OutlinedTextField(
@@ -477,11 +475,12 @@ private fun ChannelCard(
                     )
                 }
             } else if (channel.type == ChannelType.BARK) {
-                OutlinedTextField(
+                UrlFieldWithScan(
                     value = channel.url,
                     onValueChange = { onUpdate(channel.copy(url = it)) },
-                    label = { Text("服务器地址（留空=官方 api.day.app）") },
-                    modifier = Modifier.fillMaxWidth()
+                    label = "服务器地址（留空=官方 api.day.app，可点 📷 扫码填写）",
+                    modifier = Modifier.fillMaxWidth(),
+                    onRequestScan = { onRequestScan(channel.id) }
                 )
             }
             OutlinedTextField(
@@ -497,4 +496,46 @@ private fun ChannelCard(
             }
         }
     }
+}
+
+@Composable
+private fun UrlFieldWithScan(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    onRequestScan: () -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = modifier,
+        trailingIcon = {
+            IconButton(onClick = onRequestScan) {
+                Text("📷", style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    )
+}
+
+/**
+ * 将扫码得到的文本解析为渠道配置：
+ * - 形如 http(s)://host:port[/token] 的 URL：Bark 拆为「服务器地址 + Key/Token」，Webhook 原样填入端点；
+ * - 非 URL（纯 Key/Token）：填入 Token 字段。
+ * 这样在手机上无需手打长地址，扫一下另一台 Bark 服务器手机上的二维码即可自动填好。
+ */
+private fun applyScanToChannel(channel: ChannelConfig, text: String): ChannelConfig {
+    val t = text.trim()
+    val isUrl = t.startsWith("http://", ignoreCase = true) || t.startsWith("https://", ignoreCase = true)
+    if (!isUrl) return channel.copy(token = t)
+    return runCatching {
+        val u = java.net.URI(t)
+        val base = "${u.scheme}://${u.host}" + if (u.port != -1) ":${u.port}" else ""
+        val seg = u.path.trim('/').split('/').firstOrNull()?.takeIf { it.isNotBlank() && it != "push" }
+        when (channel.type) {
+            ChannelType.WEBHOOK -> channel.copy(url = t)
+            else -> channel.copy(url = base, token = seg ?: channel.token)
+        }
+    }.getOrDefault(channel.copy(url = t))
 }

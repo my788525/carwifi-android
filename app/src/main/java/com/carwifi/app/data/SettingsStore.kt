@@ -16,13 +16,12 @@ private val Context.dataStore by preferencesDataStore(name = "carwifi_settings")
 /** 全部运行配置的集合快照。 */
 data class AppSettings(
     val batteryThreshold: Int = 20,
-    /** 充电自动开热点开关（Shizuku 路径）。 */
+    /** 充电自动开热点开关（已移除 Shizuku，改为手动开启或厂商「自动任务」）。 */
     val tetheringEnabled: Boolean = true,
     val smsForwardEnabled: Boolean = true,
     val missedCallForwardEnabled: Boolean = true,
     val lowBatteryEnabled: Boolean = true,
     val hideBody: Boolean = false,
-    val shizukuReady: Boolean = false,
     /** 夜间模式总开关。 */
     val nightModeEnabled: Boolean = false,
     /** 夜间模式起止小时（0-23），可跨午夜。 */
@@ -66,7 +65,6 @@ class SettingsStore(private val context: Context) {
             missedCallForwardEnabled = prefs[CALL_ENABLED] ?: true,
             lowBatteryEnabled = prefs[BATTERY_ENABLED] ?: true,
             hideBody = prefs[HIDE_BODY] ?: false,
-            shizukuReady = prefs[SHIZUKU_READY] ?: false,
             nightModeEnabled = prefs[NIGHT_ENABLED] ?: false,
             nightStartHour = prefs[NIGHT_START] ?: 22,
             nightEndHour = prefs[NIGHT_END] ?: 7,
@@ -94,7 +92,6 @@ class SettingsStore(private val context: Context) {
             prefs[CALL_ENABLED] = next.missedCallForwardEnabled
             prefs[BATTERY_ENABLED] = next.lowBatteryEnabled
             prefs[HIDE_BODY] = next.hideBody
-            prefs[SHIZUKU_READY] = next.shizukuReady
             prefs[NIGHT_ENABLED] = next.nightModeEnabled
             prefs[NIGHT_START] = next.nightStartHour
             prefs[NIGHT_END] = next.nightEndHour
@@ -123,7 +120,6 @@ class SettingsStore(private val context: Context) {
             missedCallForwardEnabled = prefs[CALL_ENABLED] ?: true,
             lowBatteryEnabled = prefs[BATTERY_ENABLED] ?: true,
             hideBody = prefs[HIDE_BODY] ?: false,
-            shizukuReady = prefs[SHIZUKU_READY] ?: false,
             nightModeEnabled = prefs[NIGHT_ENABLED] ?: false,
             nightStartHour = prefs[NIGHT_START] ?: 22,
             nightEndHour = prefs[NIGHT_END] ?: 7,
@@ -148,7 +144,6 @@ class SettingsStore(private val context: Context) {
         private val CALL_ENABLED = booleanPreferencesKey("call_enabled")
         private val BATTERY_ENABLED = booleanPreferencesKey("battery_enabled")
         private val HIDE_BODY = booleanPreferencesKey("hide_body")
-        private val SHIZUKU_READY = booleanPreferencesKey("shizuku_ready")
         private val NIGHT_ENABLED = booleanPreferencesKey("night_enabled")
         private val NIGHT_START = intPreferencesKey("night_start")
         private val NIGHT_END = intPreferencesKey("night_end")

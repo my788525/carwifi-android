@@ -74,7 +74,7 @@ class CoreService : android.app.Service() {
                         val ok = tethering.startHotspot()
                         auditLogger.log(
                             if (ok) "已在充电：开机自动开启热点"
-                            else "已在充电：热点开启失败（Shizuku 未就绪，可在设置查看操作提示）"
+                            else "已在充电：应用无法自动开热点，请在系统设置手动开启"
                         )
                     }
                     delay(3000)
@@ -122,7 +122,7 @@ class CoreService : android.app.Service() {
                 val ok = tethering.startHotspot()
                 auditLogger.log(
                     if (ok) "充电：已开启热点"
-                    else "充电：热点开启失败（Shizuku 未就绪，可在设置中查看操作提示）"
+                    else "充电：应用无法自动开热点，请在系统设置手动开启"
                 )
             } else if (s.tetheringEnabled) {
                 auditLogger.log("充电：本机由系统自动任务管理热点，应用跳过接管")
