@@ -13,9 +13,11 @@ object ShizukuStarter {
 
     /** 初始化（建议在 Application/Activity 中调用一次）。 */
     fun init() {
-        if (binderListener == null) {
-            binderListener = Shizuku.OnBinderReceivedListener { /* binder 已就绪 */ }
-            Shizuku.addBinderReceivedListenerSticky(binderListener!!)
+        runCatching {
+            if (binderListener == null) {
+                binderListener = Shizuku.OnBinderReceivedListener { /* binder 已就绪 */ }
+                Shizuku.addBinderReceivedListenerSticky(binderListener!!)
+            }
         }
     }
 

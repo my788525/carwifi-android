@@ -47,38 +47,44 @@ class CoreService : android.app.Service() {
 
     override fun onCreate() {
         super.onCreate()
-        settingsStore = SettingsStore(applicationContext)
-        auditLogger = AuditLogger(filesDir)
-        tethering = TetheringController(applicationContext)
-        createChannel()
-        startForeground(NOTIF_ID, buildNotification())
-        auditLogger.log("核心服务已启动（常驻，仅负责热点与状态）")
+        try {
+            settingsStore = SettingsStore(applicationContext)
+            auditLogger = AuditLogger(filesDir)
+            tethering = TetheringController(applicationContext)
+            createChannel()
+            startForeground(NOTIF_ID, buildNotification())
+            auditLogger.log("核心服务已启动（常驻，仅负责热点与状态）")
 
-        // 动态注册热点状态变更监听：掉线即恢复，比 15 分钟轮询更及时、更省电
-        tetherReceiver = TetherStateReceiver()
-        registerReceiver(tetherReceiver, IntentFilter("android.net.conn.TETHER_STATE_CHANGED"))
+            // 动态注册热点状态变更监听：掉线即恢复，比 15 分钟轮询更及时、更省电
+            tetherReceiver = TetherStateReceiver()
+            registerReceiver(tetherReceiver, IntentFilter("android.net.conn.TETHER_STATE_CHANGED"))
 
-        // 注册「设置变更协调」本地广播：来自 MainActivity 开关变更，用于即时起停文件共享
-        reconcileReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) = reconcileFileShare()
-        }
-        registerReceiver(reconcileReceiver, IntentFilter(ACTION_RECONCILE))
-
-        // 开机 / 重启后若已在充电（如常驻车充），立即按设置开热点。
-        // 设备已在充电时系统不会重发 ACTION_POWER_CONNECTED，故需主动检测。
-        if (BatteryUtils.isCharging(applicationContext)) {
-            scope.launch {
-                val s = settingsStore.settings.first()
-                if (s.tetheringEnabled && HotspotPolicy.shouldControlByApp(s)) {
-                    val ok = tethering.startHotspot()
-                    auditLogger.log(
-                        if (ok) "已在充电：开机自动开启热点"
-                        else "已在充电：热点开启失败（Shizuku 未就绪，可在设置查看操作提示）"
-                    )
-                }
-                delay(3000)
-                reconcileFileShare()
+            // 注册「设置变更协调」本地广播：来自 MainActivity 开关变更，用于即时起停文件共享
+            reconcileReceiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) = reconcileFileShare()
             }
+            registerReceiver(reconcileReceiver, IntentFilter(ACTION_RECONCILE))
+
+            // 开机 / 重启后若已在充电（如常驻车充），立即按设置开热点。
+            // 设备已在充电时系统不会重发 ACTION_POWER_CONNECTED，故需主动检测。
+            if (BatteryUtils.isCharging(applicationContext)) {
+                scope.launch {
+                    val s = settingsStore.settings.first()
+                    if (s.tetheringEnabled && HotspotPolicy.shouldControlByApp(s)) {
+                        val ok = tethering.startHotspot()
+                        auditLogger.log(
+                            if (ok) "已在充电：开机自动开启热点"
+                            else "已在充电：热点开启失败（Shizuku 未就绪，可在设置查看操作提示）"
+                        )
+                    }
+                    delay(3000)
+                    reconcileFileShare()
+                }
+            }
+        } catch (t: Throwable) {
+            // 服务与 Activity 同进程：任何未捕获异常都会拖垮整个进程（表现为点图标无反应）。
+            // 此处兜底，确保即使服务启动失败，主界面仍可用。
+            runCatching { auditLogger.log("核心服务启动异常：${t.message}") }
         }
     }
 

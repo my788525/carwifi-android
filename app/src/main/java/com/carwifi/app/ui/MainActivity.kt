@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settingsStore = SettingsStore(applicationContext)
         uiLogger = AuditLogger(filesDir)
-        ShizukuStarter.init()
+        runCatching { ShizukuStarter.init() }
 
         // 运行时权限（侧载场景同样需要授予）。未接来电走通知监听，无需 READ_CALL_LOG。
         val needed = mutableListOf(
@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
         // 拉起常驻服务
         CoreService.start(this)
         // 启动低功耗周期监测（电量阈值 + 夜间补发 + 热点保活）
-        MonitorScheduler.schedule(this)
+        runCatching { MonitorScheduler.schedule(this) }
         audit = uiLogger.recent()
         refreshBatteryExempt()
 
