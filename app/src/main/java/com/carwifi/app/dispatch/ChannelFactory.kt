@@ -7,7 +7,8 @@ import com.carwifi.app.model.PresetInterface
 object ChannelFactory {
     fun build(config: PresetInterface): Channel? = when (config.type) {
         ChannelType.BARK -> if (config.token.isNotBlank() || config.server.isNotBlank()) BarkChannel(config) else null
-        ChannelType.SERVER_CHAN -> if (config.token.isNotBlank()) ServerChanChannel(config) else null
+        ChannelType.WXPUSHER -> if (config.token.isNotBlank() && config.extra.isNotBlank()) WxPusherChannel(config) else null
+        ChannelType.PUSHPLUS -> if (config.token.isNotBlank()) PushPlusChannel(config) else null
         ChannelType.WECOM -> if (config.token.isNotBlank()) WeComChannel(config) else null
         ChannelType.WEBHOOK -> if (config.server.isNotBlank()) CustomWebhookChannel(config) else null
     }

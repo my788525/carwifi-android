@@ -54,4 +54,19 @@ object Http {
         }
         return conn.responseCode.also { conn.disconnect() }
     }
+
+    /** POST JSON 并返回响应体文本（非 2xx 时读 errorStream），供需要解析业务码（如 WxPusher/PushPlus）的渠道使用。 */
+    fun postJsonBody(url: String, json: String, timeoutMs: Int = 15000): String {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            outputStream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+        }
+        val code = conn.responseCode
+        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+        return stream.bufferedReader(Charsets.UTF_8).use { it.readText() }.also { conn.disconnect() }
+    }
 }

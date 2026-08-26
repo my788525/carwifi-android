@@ -192,7 +192,8 @@ class SettingsStore(private val context: Context) {
                                 token = io.optString("token", ""),
                                 method = io.optString("method", "POST").uppercase(),
                                 template = io.optString("template", ChannelConfig.DEFAULT_TEMPLATE),
-                                titleTemplate = io.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE)
+                                titleTemplate = io.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE),
+                                extra = io.optString("extra", "")
                             )
                         }
                     }
@@ -246,6 +247,7 @@ class SettingsStore(private val context: Context) {
                             put("method", p.method)
                             put("template", p.template)
                             put("titleTemplate", p.titleTemplate)
+                            put("extra", p.extra)
                         })
                     }
                     put("interfaces", ifArr)

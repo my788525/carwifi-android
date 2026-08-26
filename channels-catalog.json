@@ -1,7 +1,7 @@
 {
   "interfaces": [
     {
-      "id": "bark-home",
+      "id": "bark",
       "name": "Bark 服务器",
       "type": "bark",
       "server": "https://api.day.app/",
@@ -31,14 +31,26 @@
       "titleTemplate": ""
     },
     {
-      "id": "serverchan-demo",
-      "name": "Server 酱（示例）",
-      "type": "server_chan",
+      "id": "wxpusher-demo",
+      "name": "WxPusher（示例）",
+      "type": "wxpusher",
       "server": "",
-      "token": "替换为你的SCTxxxxKey",
+      "token": "替换为你的AT_xxxxAppToken",
       "method": "POST",
-      "template": "{{event}}\n来自 {{sender}}：{{body}}",
-      "titleTemplate": "{{event}} · {{device}}"
+      "template": "{{event}}<br>来自 {{sender}}：{{body}}<br>时间 {{time}}",
+      "titleTemplate": "{{event}} · {{device}}",
+      "extra": "uids=UID_xxxx"
+    },
+    {
+      "id": "pushplus-demo",
+      "name": "PushPlus（示例）",
+      "type": "pushplus",
+      "server": "",
+      "token": "替换为你的PushPlus用户Token",
+      "method": "POST",
+      "template": "{{event}}<br>来自 {{sender}}：{{body}}<br>时间 {{time}}",
+      "titleTemplate": "{{event}} · {{device}}",
+      "extra": ""
     }
   ]
 }

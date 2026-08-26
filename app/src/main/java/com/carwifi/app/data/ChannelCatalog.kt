@@ -66,7 +66,8 @@ object ChannelCatalog {
                     token = o.optString("token", ""),
                     method = o.optString("method", "POST").uppercase(),
                     template = o.optString("template", ChannelConfig.DEFAULT_TEMPLATE),
-                    titleTemplate = o.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE)
+                    titleTemplate = o.optString("titleTemplate", ChannelConfig.DEFAULT_TITLE),
+                    extra = o.optString("extra", "")
                 )
             }
         }

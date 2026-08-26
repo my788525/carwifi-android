@@ -6,9 +6,12 @@ package com.carwifi.app.model
  *
  * 字段含义：
  * - bark:      server = 服务器地址（可空，默认官方 api.day.app），token = 设备/推送 key
- * - server_chan: token = SCT 后的 key（server 留空）
+ * - wxpusher:  token = appToken，extra = 接收目标（UID 或 Topic ID，详见 WxPusherChannel）
+ * - pushplus:  token = 用户 token，extra = 群组编码 topic（可选，留空仅发给自己）
  * - wecom:     token = webhook key（server 留空）
  * - webhook:   server = 完整端点，method = GET/POST，token 留空
+ *
+ * extra：渠道特定的附加参数（JSON 字符串），目前 WxPusher 用其承载 UID/Topic、PushPlus 用其承载群组编码。
  */
 data class PresetInterface(
     val id: String = "",
@@ -18,5 +21,6 @@ data class PresetInterface(
     val token: String = "",
     val method: String = "POST",
     val template: String = ChannelConfig.DEFAULT_TEMPLATE,
-    val titleTemplate: String = ChannelConfig.DEFAULT_TITLE
+    val titleTemplate: String = ChannelConfig.DEFAULT_TITLE,
+    val extra: String = ""
 )

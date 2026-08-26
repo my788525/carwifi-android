@@ -362,7 +362,7 @@ fun SettingsScreen(
                             Spacer(Modifier.height(10.dp))
                         }
                         if (settings.channels.isEmpty()) {
-                            Text("尚未配置渠道。添加 Bark / Server 酱 / 企业微信 / 自定义 Webhook 后，短信、未接来电、低电量将推送到这里。",
+                            Text("尚未配置渠道。添加 Bark / WxPusher / PushPlus / 企业微信 / 自定义 Webhook 后，短信、未接来电、低电量将推送到这里。",
                                 style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -430,7 +430,9 @@ private fun ChannelCard(
 ) {
     val types = ChannelType.entries
     var expanded by remember { mutableStateOf(false) }
-    val hasServer = channel.type == ChannelType.BARK || channel.type == ChannelType.WEBHOOK
+    val hasServer = channel.type in setOf(
+        ChannelType.BARK, ChannelType.WEBHOOK, ChannelType.WXPUSHER, ChannelType.PUSHPLUS
+    )
 
     fun updateIface(iface: PresetInterface, transform: PresetInterface.() -> PresetInterface) {
         onUpdate(channel.copy(interfaces = channel.interfaces.map {
@@ -566,6 +568,32 @@ private fun ChannelCard(
                                 onValueChange = { updateIface(iface) { copy(method = it.uppercase()) } },
                                 label = { Text("方法 GET/POST") },
                                 modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        if (channel.type == ChannelType.WXPUSHER) {
+                            OutlinedTextField(
+                                value = iface.extra,
+                                onValueChange = { updateIface(iface) { copy(extra = it) } },
+                                label = { Text("接收目标 UID / Topic ID（必填）") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "填 UID（如 UID_xxx）单发；或填数字 Topic ID 群发；多个逗号分隔。也可写 uids=...,topicIds=... 精确指定。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        if (channel.type == ChannelType.PUSHPLUS) {
+                            OutlinedTextField(
+                                value = iface.extra,
+                                onValueChange = { updateIface(iface) { copy(extra = it) } },
+                                label = { Text("群组编码 topic（可选）") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "留空仅发送给自己；填群组编码可一对多发送给群组成员。",
+                                style = MaterialTheme.typography.bodySmall
                             )
                             Spacer(Modifier.height(6.dp))
                         }

@@ -89,7 +89,7 @@
 
   <header class="doc">
     <h1>CarWifi · 安卓车载 WiFi 与智能消息转发 App</h1>
-    <p class="sub">将安卓手机变为车载热点，并在充电 / 低电量 / 短信 / 未接来电等事件触发时，把关键信息自动推送到 Bark、Server 酱、企业微信等自定义渠道。</p>
+    <p class="sub">将安卓手机变为车载热点，并在充电 / 低电量 / 短信 / 未接来电等事件触发时，把关键信息自动推送到 Bark、WxPusher、PushPlus、企业微信等自定义渠道。</p>
     <div class="pills">
       <span class="pill">技术栈推荐：<b>原生 Kotlin + Jetpack</b></span>
       <span class="pill">最低兼容：<b>Android 8.0 (API 26)</b></span>
@@ -160,7 +160,7 @@
       <rect x="520" y="232" width="148" height="100" rx="10" fill="#f8fafc" stroke="#475569"/>
       <text x="594" y="258" text-anchor="middle" font-size="12.5" font-weight="700" fill="#243b53">推送渠道</text>
       <text x="594" y="278" text-anchor="middle" font-size="10.5" fill="#475569">Bark</text>
-      <text x="594" y="294" text-anchor="middle" font-size="10.5" fill="#475569">Server 酱</text>
+      <text x="594" y="294" text-anchor="middle" font-size="10.5" fill="#475569">WxPusher / PushPlus</text>
       <text x="594" y="310" text-anchor="middle" font-size="10.5" fill="#475569">企业微信 / 自定义 Webhook</text>
 
       <!-- arrows -->
@@ -228,10 +228,16 @@
         <td><code>title</code>, <code>body</code>, <code>level</code>, <code>sound</code></td>
       </tr>
       <tr>
-        <td><b>Server 酱</b></td>
-        <td>GET / POST</td>
-        <td><code>https://sctapi.ftqq.com/SCT&lt;KEY&gt;.send</code></td>
-        <td><code>title</code>, <code>desp</code>（支持 Markdown）</td>
+        <td><b>WxPusher</b></td>
+        <td>POST (JSON)</td>
+        <td><code>https://wxpusher.zjiecode.com/api/send/message</code></td>
+        <td><code>appToken</code>, <code>uids</code>/<code>topicIds</code>, <code>content</code>(HTML)</td>
+      </tr>
+      <tr>
+        <td><b>PushPlus</b></td>
+        <td>GET / POST (JSON)</td>
+        <td><code>https://www.pushplus.plus/send</code></td>
+        <td><code>token</code>, <code>title</code>, <code>content</code>(HTML), <code>topic</code></td>
       </tr>
       <tr>
         <td><b>企业微信机器人</b></td>
@@ -348,7 +354,7 @@ class MessageDispatcher(private val channels: List&lt;Channel&gt;) {
         <h3 style="margin-top:0">V1.0</h3>
         <ul class="tight">
           <li>NotificationListener 未接来电转发</li>
-          <li>Server 酱 / 企业微信渠道</li>
+          <li>WxPusher / PushPlus / 企业微信渠道</li>
           <li>模板占位符 + 多渠道并发</li>
           <li>OEM 白名单引导页</li>
         </ul>
